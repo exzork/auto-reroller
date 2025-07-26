@@ -1,0 +1,642 @@
+"""
+Main Automation Engine
+Orchestrates all components for game automation
+"""
+
+import time
+import threading
+import msvcrt
+from typing import Dict, Any, List
+from .device_manager import DeviceManager
+from .macro_executor import MacroExecutor
+from .image_detection import ImageDetector
+from .discord_notifier import DiscordNotifier
+from games.base_game import BaseGame
+
+
+class AutomationInstance:
+    """Individual automation instance for a specific device"""
+    
+    def __init__(self, device_id: str, instance_number: int, game: BaseGame, 
+                 macro_executor: MacroExecutor, image_detector: ImageDetector,
+                 device_manager: DeviceManager, discord_notifier: DiscordNotifier,
+                 verbose: bool = False):
+        self.device_id = device_id
+        self.instance_number = instance_number
+        self.game = game
+        self.macro_executor = macro_executor
+        self.image_detector = image_detector
+        self.device_manager = device_manager
+        self.discord_notifier = discord_notifier
+        self.verbose = verbose
+        
+        # Instance state
+        self.running = True
+        self.instance_data = game.create_instance_data(device_id, instance_number, verbose)
+        
+        # Timeout tracking
+        self.current_state_start_time = time.time()
+        self.timeout_thread = None
+        
+        if self.verbose:
+            print(f"🔍 Instance #{instance_number}: Detailed initialization for device: {device_id}")
+            print(f"   Game: {game.get_display_name()}")
+            print(f"   Initial state: {self.instance_data['current_state']}")
+            # Log game-specific verbose configuration if available
+            if hasattr(game, 'log_verbose_config'):
+                game.log_verbose_config(device_id)
+        else:
+            print(f"🤖 Instance #{instance_number} initialized for device: {device_id}")
+    
+    def start_background_timeout_checker(self):
+        """Start background timeout checker"""
+        self.timeout_thread = threading.Thread(target=self._timeout_checker_loop, daemon=True)
+        self.timeout_thread.start()
+    
+    def stop_background_timeout_checker(self):
+        """Stop background timeout checker"""
+        if self.timeout_thread and self.timeout_thread.is_alive():
+            self.timeout_thread.join(timeout=1)
+    
+    def _timeout_checker_loop(self):
+        """Background loop to check for timeouts"""
+        while self.running:
+            try:
+                if self.check_state_timeout():
+                    print(f"🚨 Instance #{self.instance_number}: TIMEOUT detected! Restarting app...")
+                    if self.handle_timeout():
+                        print(f"✅ Instance #{self.instance_number}: Timeout recovery successful")
+                    else:
+                        print(f"❌ Instance #{self.instance_number}: Timeout recovery failed")
+                        self.running = False
+                        break
+                
+                time.sleep(5)  # Check every 5 seconds
+            except Exception as e:
+                print(f"❌ Instance #{self.instance_number}: Error in timeout checker: {e}")
+                break
+    
+    def check_state_timeout(self) -> bool:
+        """Check if current state has been running too long"""
+        current_time = time.time()
+        time_in_state = current_time - self.current_state_start_time
+        
+        # Get timeout for current state
+        state_timeouts = self.game.get_state_timeouts()
+        current_state = self.instance_data['current_state']
+        base_timeout = state_timeouts.get(current_state, 240)  # Default 4 minutes
+        
+        # Adjust timeout based on macro speed multiplier
+        adjusted_timeout = base_timeout * self.macro_executor.speed_multiplier
+        
+        if time_in_state > adjusted_timeout:
+            print(f"⏰ Instance #{self.instance_number}: TIMEOUT! State '{current_state}' stuck for {time_in_state:.1f}s")
+            return True
+        return False
+    
+    def change_state(self, new_state: str):
+        """Change automation state and update timing"""
+        if new_state != self.instance_data['current_state']:
+            old_state = self.instance_data['current_state']
+            self.instance_data['current_state'] = new_state
+            self.current_state_start_time = time.time()
+            
+            if self.verbose:
+                print(f"🔄 Instance #{self.instance_number}: State transition: {old_state} → {new_state}")
+    
+    def handle_timeout(self) -> bool:
+        """Handle timeout by restarting app and resetting state"""
+        try:
+            if self.verbose:
+                print(f"🔧 Instance #{self.instance_number}: Attempting app restart due to timeout")
+            
+            # Restart the app
+            if self.device_manager.restart_app(
+                self.device_id, 
+                self.game.get_app_package(), 
+                self.game.get_app_activity()
+            ):
+                # Reset to initial state
+                initial_state = self.game.get_initial_state()
+                self.change_state(initial_state)
+                
+                # Force reset timeout timer (fix for bug where timeout doesn't reset after app restart)
+                self.current_state_start_time = time.time()
+                
+                self.instance_data['cycle_count'] = 0
+                self.instance_data['detected_items'] = []
+                self.instance_data['account_id'] = None
+                
+                if self.verbose:
+                    print(f"✅ Instance #{self.instance_number}: App restart successful, reset to state: {initial_state}")
+                
+                return True
+            else:
+                if self.verbose:
+                    print(f"❌ Instance #{self.instance_number}: App restart failed")
+                return False
+        except Exception as e:
+            print(f"❌ Instance #{self.instance_number}: Error handling timeout: {e}")
+            return False
+    
+    def get_screenshot(self):
+        """Get screenshot for this device"""
+        if self.verbose:
+            print(f"📸 Instance #{self.instance_number}: Capturing screenshot")
+        
+        screenshot_bytes = self.device_manager.get_screenshot(self.device_id)
+        if screenshot_bytes:
+            screenshot = self.image_detector.bytes_to_image(screenshot_bytes)
+            if self.verbose and screenshot is not None:
+                h, w = screenshot.shape[:2]
+                print(f"📸 Instance #{self.instance_number}: Screenshot captured ({w}x{h})")
+            return screenshot
+        elif self.verbose:
+            print(f"❌ Instance #{self.instance_number}: Failed to capture screenshot")
+        return None
+    
+    def execute_macro(self, macro_name: str) -> bool:
+        """Execute a macro for this game"""
+        if self.verbose:
+            print(f"🎬 Instance #{self.instance_number}: Executing macro: {macro_name}")
+        
+        width, height = self.game.get_device_resolution()
+        success = self.macro_executor.execute_game_macro(
+            self.device_id, self.game.get_game_name(), macro_name, width, height
+        )
+        
+        if self.verbose:
+            if success:
+                print(f"✅ Instance #{self.instance_number}: Macro '{macro_name}' executed successfully")
+            else:
+                print(f"❌ Instance #{self.instance_number}: Macro '{macro_name}' execution failed")
+        
+        return success
+    
+    def detect_template(self, screenshot, template_name: str) -> bool:
+        """Detect a template in the screenshot"""
+        if self.verbose:
+            print(f"🔍 Instance #{self.instance_number}: Detecting template: {template_name}")
+        
+        threshold = self.game.get_template_threshold(template_name)
+        detected = self.image_detector.detect_game_template(
+            screenshot, self.game.get_game_name(), template_name, threshold
+        )
+        
+        if self.verbose:
+            if detected:
+                print(f"✅ Instance #{self.instance_number}: Template '{template_name}' detected (threshold: {threshold})")
+            else:
+                print(f"❌ Instance #{self.instance_number}: Template '{template_name}' not found (threshold: {threshold})")
+        
+        return detected
+    
+    def process_screenshot_for_items(self, screenshot) -> List[str]:
+        """Process screenshot to detect items"""
+        if self.verbose:
+            print(f"🔍 Instance #{self.instance_number}: Processing screenshot for items")
+        
+        detected_items = self.game.process_screenshot_for_items(screenshot, self.instance_data)
+        
+        if self.verbose:
+            if detected_items:
+                print(f"🎁 Instance #{self.instance_number}: Detected {len(detected_items)} items: {detected_items}")
+            else:
+                print(f"🔍 Instance #{self.instance_number}: No items detected in screenshot")
+        
+        return detected_items
+    
+    def is_new_cycle(self, screenshot) -> bool:
+        """Check if this is a new cycle"""
+        is_new = self.game.is_new_cycle(screenshot, self.instance_data)
+        
+        if self.verbose:
+            print(f"🔄 Instance #{self.instance_number}: Cycle check - {'New cycle detected' if is_new else 'Same cycle'}")
+        
+        return is_new
+    
+    def get_account_id(self) -> str:
+        """Get account ID from device"""
+        if self.verbose:
+            print(f"📋 Instance #{self.instance_number}: Retrieving account ID from clipboard")
+        
+        account_id = self.device_manager.get_clipboard(self.device_id)
+        
+        if self.verbose:
+            if account_id:
+                print(f"✅ Instance #{self.instance_number}: Account ID retrieved: {account_id}")
+            else:
+                print(f"❌ Instance #{self.instance_number}: Failed to retrieve account ID")
+        
+        return account_id
+    
+    def run_automation(self):
+        """Main automation loop for this instance"""
+        self.start_background_timeout_checker()
+        
+        # Restart app for clean state
+        if not self.device_manager.restart_app(
+            self.device_id, 
+            self.game.get_app_package(), 
+            self.game.get_app_activity()
+        ):
+            print(f"❌ Instance #{self.instance_number}: Failed to restart app")
+            self.stop_background_timeout_checker()
+            return False
+        
+        # Get automation states from game
+        automation_states = self.game.get_automation_states()
+        
+        # Track last detection time to avoid repeated processing
+        last_detection_time = 0
+        detection_cooldown = 2 * self.macro_executor.speed_multiplier  # Scale cooldown with speed
+        
+        try:
+            while self.running:
+                current_time = time.time()
+                
+                screenshot = self.get_screenshot()
+                if screenshot is None:
+                    time.sleep(0.5 * self.macro_executor.speed_multiplier)
+                    continue
+                
+                current_state = self.instance_data['current_state']
+                
+                # Get state configuration
+                if current_state not in automation_states:
+                    print(f"❌ Instance #{self.instance_number}: Unknown state '{current_state}'")
+                    break
+                
+                state_config = automation_states[current_state]
+                
+                if self.verbose and current_time - last_detection_time > 30:  # Log current state every 30 seconds
+                    time_in_state = current_time - self.current_state_start_time
+                    print(f"🔄 Instance #{self.instance_number}: Current state: {current_state} ({time_in_state:.1f}s)")
+                
+                # Check for template detection
+                templates = state_config.get('templates', [])
+                macros = state_config.get('macros', [])
+                template_detected = False
+                
+                if self.verbose and templates:
+                    print(f"🔍 Instance #{self.instance_number}: Checking templates: {templates}")
+                
+                for template in templates:
+                    if self.detect_template(screenshot, template):
+                        template_detected = True
+                        if self.verbose:
+                            print(f"✅ Instance #{self.instance_number}: Template '{template}' triggered state action")
+                        break
+                
+                # Determine if we should execute macros
+                # Execute if: (template detected) OR (state has macros but no templates to detect)
+                should_execute_macros = (
+                    (template_detected and current_time - last_detection_time > detection_cooldown) or
+                    (not templates and macros and current_time - last_detection_time > detection_cooldown)
+                )
+                
+                # Special handling for "completed" state - trigger session completion
+                if current_state == 'completed' and current_time - last_detection_time > detection_cooldown:
+                    if self.verbose:
+                        print(f"🏁 Instance #{self.instance_number}: Reached completed state, finishing session")
+                    
+                    # Complete the session (sends Discord notification and resets)
+                    self.complete_session()
+                    last_detection_time = current_time
+                    continue
+                
+                # Handle states with no templates and no macros (auto-transition)
+                if not templates and not macros and current_time - last_detection_time > detection_cooldown:
+                    next_states = state_config.get('next_states', [])
+                    if next_states:
+                        next_state = next_states[0]
+                        if self.verbose:
+                            print(f"🔄 Instance #{self.instance_number}: Auto-transitioning from '{current_state}' to '{next_state}' (no actions required)")
+                        self.change_state(next_state)
+                        last_detection_time = current_time
+                    continue
+                
+                # Process state logic
+                if should_execute_macros:
+                    if self.verbose:
+                        reason = "template detected" if template_detected else "no templates, executing macros"
+                        print(f"🎬 Instance #{self.instance_number}: Processing state '{current_state}' actions ({reason})")
+                    
+                    # Execute macros for this state
+                    macro_success = True
+                    
+                    if self.verbose and macros:
+                        print(f"🎬 Instance #{self.instance_number}: Executing {len(macros)} macro(s): {macros}")
+                    
+                    for macro in macros:
+                        if not self.execute_macro(macro):
+                            macro_success = False
+                            break
+                        
+                        # Process items if this is a cycle where items are obtained
+                        if state_config.get('processes_items', False):
+                            if self.verbose:
+                                print(f"🎁 Instance #{self.instance_number}: Processing items after macro '{macro}'")
+                            
+                            time.sleep(2 * self.macro_executor.speed_multiplier)  # Wait for items to appear (respects speed)
+                            new_screenshot = self.get_screenshot()
+                            if new_screenshot is not None and self.is_new_cycle(new_screenshot):
+                                # Increment cycle count regardless of item detection
+                                self.instance_data['cycle_count'] += 1
+                                
+                                # Try to detect items
+                                detected_items = self.process_screenshot_for_items(new_screenshot)
+                                if detected_items:
+                                    self.instance_data['detected_items'].extend(detected_items)
+                                    if self.verbose:
+                                        print(f"🎁 Instance #{self.instance_number}: Cycle {self.instance_data['cycle_count']} complete, {len(detected_items)} items added")
+                                else:
+                                    if self.verbose:
+                                        print(f"🎁 Instance #{self.instance_number}: Cycle {self.instance_data['cycle_count']} complete, no items detected")
+                    
+                    # Transition to next state
+                    if macro_success:
+                        next_states = state_config.get('next_states', [])
+                        if next_states:
+                            # Smart state selection based on cycles remaining
+                            cycles_completed = self.instance_data['cycle_count']
+                            cycles_needed = self.game.get_cycles_per_session()
+                            current_state = self.instance_data['current_state']
+                            
+                            # For pulling_gacha state, decide whether to continue or finish
+                            if current_state == 'pulling_gacha' and len(next_states) >= 2:
+                                if cycles_completed < cycles_needed:
+                                    # Continue pulling - go to pulling_gacha (usually index 1)
+                                    next_state = 'pulling_gacha' if 'pulling_gacha' in next_states else next_states[1]
+                                    if self.verbose:
+                                        print(f"🎰 Instance #{self.instance_number}: Continuing gacha pulls ({cycles_completed}/{cycles_needed})")
+                                else:
+                                    # Finish pulling - go to completion state (usually index 0)
+                                    next_state = next_states[0] if next_states[0] != 'pulling_gacha' else next_states[1]
+                                    if self.verbose:
+                                        print(f"🏁 Instance #{self.instance_number}: Gacha pull limit reached ({cycles_completed}/{cycles_needed}), finishing")
+                            else:
+                                # Default behavior for other states
+                                next_state = next_states[0]
+                            
+                            if self.verbose:
+                                print(f"🔄 Instance #{self.instance_number}: Transitioning to next state: {next_state}")
+                            self.change_state(next_state)
+                    else:
+                        if self.verbose:
+                            print(f"❌ Instance #{self.instance_number}: Macro execution failed, staying in current state")
+                    
+                    last_detection_time = current_time
+                
+                time.sleep(0.5 * self.macro_executor.speed_multiplier)  # Main loop delay (respects speed)
+                
+        except KeyboardInterrupt:
+            print(f"\n🛑 Instance #{self.instance_number}: Interrupted by user")
+        except Exception as e:
+            print(f"❌ Instance #{self.instance_number}: Unexpected error: {e}")
+        finally:
+            self.stop_background_timeout_checker()
+        
+        return True
+    
+    def complete_session(self):
+        """Complete the current automation session"""
+        try:
+            if self.verbose:
+                print(f"🏁 Instance #{self.instance_number}: Starting session completion")
+            
+            # Get account ID
+            account_id = self.get_account_id()
+            if account_id:
+                self.instance_data['account_id'] = account_id
+                print(f"✅ Instance #{self.instance_number}: Account ID: {account_id}")
+            
+            # Calculate and show results
+            detected_items = self.instance_data['detected_items']
+            total_score, score_breakdown = self.game.calculate_score(detected_items)
+            
+            if self.verbose:
+                print(f"📊 Instance #{self.instance_number}: Session results:")
+                print(f"   Total items: {len(detected_items)}")
+                print(f"   Total score: {total_score}")
+                print(f"   Score breakdown: {score_breakdown}")
+                print(f"   Cycles completed: {self.instance_data['cycle_count']}")
+            
+            print(f"🎉 Instance #{self.instance_number}: Session completed!")
+            print(f"   Score: {total_score}, Items: {len(detected_items)}, Account: {account_id or 'None'}")
+            
+            # Send Discord notification if score is high enough
+            if self.game.should_send_discord_notification(detected_items):
+                if self.verbose:
+                    print(f"📤 Instance #{self.instance_number}: Score {total_score} meets threshold, sending Discord notification")
+                
+                results = self.game.format_results_for_discord(self.instance_data)
+                self.discord_notifier.send_game_result(
+                    self.game.get_display_name(),
+                    f"#{self.instance_number}",
+                    self.device_id,
+                    account_id,
+                    results
+                )
+            elif self.verbose:
+                threshold = self.game.get_minimum_score_threshold()
+                print(f"📊 Instance #{self.instance_number}: Score {total_score} < {threshold}, not sending Discord notification")
+            
+            # Reset for next session
+            self.reset_for_next_session()
+            
+        except Exception as e:
+            print(f"❌ Instance #{self.instance_number}: Error completing session: {e}")
+    
+    def reset_for_next_session(self):
+        """Reset instance for next automation session"""
+        old_session = self.instance_data['session_count']
+        self.instance_data['session_count'] += 1
+        self.instance_data['cycle_count'] = 0
+        self.instance_data['detected_items'] = []
+        self.instance_data['account_id'] = None
+        self.change_state(self.game.get_initial_state())
+        
+        if self.verbose:
+            print(f"🔄 Instance #{self.instance_number}: Session reset complete")
+            print(f"   Previous session: #{old_session}")
+            print(f"   New session: #{self.instance_data['session_count']}")
+            print(f"   Reset to state: {self.instance_data['current_state']}")
+        
+        print(f"🔄 Instance #{self.instance_number}: Starting session #{self.instance_data['session_count']}")
+        time.sleep(3 * self.macro_executor.speed_multiplier)  # Brief pause between sessions (respects speed)
+
+
+class AutomationEngine:
+    """Main automation engine that manages multiple instances"""
+    
+    def __init__(self, game: BaseGame, device_manager: DeviceManager,
+                 speed_multiplier: float = 1.0, inter_macro_delay: float = 0.0,
+                 max_instances: int = 8, verbose: bool = False):
+        self.game = game
+        self.device_manager = device_manager
+        self.macro_executor = MacroExecutor(speed_multiplier, inter_macro_delay, verbose)
+        self.image_detector = ImageDetector()
+        self.discord_notifier = DiscordNotifier(game.get_discord_webhook())
+        self.max_instances = max_instances
+        self.verbose = verbose
+        self.instances = []
+        self.running = True
+        
+        if self.verbose:
+            print(f"🔧 AutomationEngine: Initialized with verbose logging")
+            print(f"   Speed multiplier: {speed_multiplier}x")
+            print(f"   Inter-macro delay: {inter_macro_delay}s")
+            print(f"   Max instances: {max_instances}")
+    
+    def create_instances(self):
+        """Create automation instances for available devices"""
+        device_list = self.device_manager.get_device_list()[:self.max_instances]
+        
+        if self.verbose:
+            print(f"🔧 AutomationEngine: Creating {len(device_list)} instances")
+        
+        for i, device_id in enumerate(device_list, 1):
+            instance = AutomationInstance(
+                device_id, i, self.game, self.macro_executor,
+                self.image_detector, self.device_manager, self.discord_notifier,
+                self.verbose
+            )
+            self.instances.append(instance)
+        
+        print(f"🚀 Created {len(self.instances)} automation instances")
+    
+    def show_status(self, start_time: float):
+        """Show current status of all instances"""
+        elapsed_time = time.time() - start_time
+        total_sessions = sum(instance.instance_data['session_count'] for instance in self.instances)
+        sessions_per_hour = (total_sessions / elapsed_time) * 3600 if elapsed_time > 0 else 0
+        
+        print(f"\n📊 STATUS ({len(self.instances)} instances):")
+        print(f"🎮 Game: {self.game.get_display_name()}")
+        print(f"⏱️  Runtime: {elapsed_time/3600:.1f} hours")
+        print(f"🔄 Total sessions: {total_sessions}")
+        print(f"⚡ Speed: {sessions_per_hour:.1f} sessions/hour")
+        
+        if self.verbose:
+            print(f"🔧 Verbose mode: Active")
+            print(f"📊 Detailed Instance Status:")
+        
+        for instance in self.instances:
+            data = instance.instance_data
+            total_score = 0
+            if data['detected_items']:
+                total_score, _ = self.game.calculate_score(data['detected_items'])
+            
+            # Calculate time in current state
+            time_in_state = time.time() - instance.current_state_start_time
+            
+            if self.verbose:
+                print(f"   Instance #{instance.instance_number}:")
+                print(f"     • Device: {instance.device_id}")
+                print(f"     • Sessions: {data['session_count']}")
+                print(f"     • Current cycle: {data['cycle_count']}/{self.game.get_cycles_per_session()}")
+                print(f"     • State: {data['current_state']} ({time_in_state:.1f}s)")
+                print(f"     • Score: {total_score} ({len(data['detected_items'])} items)")
+                print(f"     • Account: {data['account_id'] or 'None'}")
+                print(f"     • Running: {'✅' if instance.running else '❌'}")
+            else:
+                print(f"   Instance #{instance.instance_number}: {data['session_count']} sessions, "
+                      f"Score: {total_score}, State: {data['current_state']} ({time_in_state:.0f}s)")
+        
+        if self.verbose:
+            print(f"\n📊 System Status:")
+            print(f"   • Macro speed: {self.macro_executor.speed_multiplier}x")
+            print(f"   • Inter-macro delay: {self.macro_executor.inter_macro_delay}s")
+            print(f"   • Discord webhook: {'✅' if self.discord_notifier.has_webhook() else '❌'}")
+            print(f"   • Score threshold: {self.game.get_minimum_score_threshold()}")
+    
+    def start(self):
+        """Start the automation engine"""
+        self.create_instances()
+        
+        if not self.instances:
+            print("❌ No instances created")
+            return False
+        
+        # Start instance threads
+        threads = []
+        for instance in self.instances:
+            if self.verbose:
+                print(f"🚀 Starting thread for Instance #{instance.instance_number}")
+            thread = threading.Thread(target=instance.run_automation, daemon=True)
+            threads.append(thread)
+            thread.start()
+        
+        if self.verbose:
+            print("✅ All instance threads started!")
+            print("Keyboard commands:")
+            print("  'q' - Quit all instances")
+            print("  's' - Show detailed status (extra detail in verbose mode)")
+        else:
+            print("✅ All instances started! Press 'q' to stop, 's' for status")
+        
+        # Track start time for statistics
+        start_time = time.time()
+        
+        # Main keyboard listener loop
+        try:
+            while self.running:
+                # Check if any instance is still running
+                any_running = any(instance.running for instance in self.instances)
+                if not any_running:
+                    if self.verbose:
+                        print("🏁 All instances have stopped")
+                    break
+                
+                # Check for keyboard input
+                if msvcrt.kbhit():
+                    key = msvcrt.getch().decode('utf-8').lower()
+                    if key == 'q':
+                        print("\n🛑 Stopping all instances...")
+                        if self.verbose:
+                            print("🛑 Sending stop signal to all instances...")
+                        self.running = False
+                        for instance in self.instances:
+                            instance.running = False
+                        break
+                    elif key == 's':
+                        self.show_status(start_time)
+                
+                time.sleep(0.5)
+                
+        except KeyboardInterrupt:
+            print("\n🛑 Keyboard interrupt - stopping all instances...")
+            if self.verbose:
+                print("🛑 Handling keyboard interrupt...")
+            self.running = False
+            for instance in self.instances:
+                instance.running = False
+        
+        # Wait for threads to finish
+        print("⏳ Waiting for all instances to stop...")
+        if self.verbose:
+            print("⏳ Joining instance threads...")
+        
+        for i, thread in enumerate(threads, 1):
+            if self.verbose:
+                print(f"⏳ Waiting for Instance #{i} thread...")
+            thread.join(timeout=5)
+        
+        # Show final summary
+        self.show_final_summary(start_time)
+        
+        return True
+    
+    def show_final_summary(self, start_time: float):
+        """Show final summary statistics"""
+        elapsed_time = time.time() - start_time
+        total_sessions = sum(instance.instance_data['session_count'] for instance in self.instances)
+        sessions_per_hour = (total_sessions / elapsed_time) * 3600 if elapsed_time > 0 else 0
+        
+        print(f"\n📊 FINAL SUMMARY:")
+        print(f"🎮 Game: {self.game.get_display_name()}")
+        print(f"🤖 Instances: {len(self.instances)} parallel")
+        print(f"⏱️  Total runtime: {elapsed_time/3600:.1f} hours")
+        print(f"🔄 Total sessions: {total_sessions}")
+        print(f"⚡ Average speed: {sessions_per_hour:.1f} sessions/hour") 

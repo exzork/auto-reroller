@@ -1,0 +1,31 @@
+{
+    "display_name": "Uma Musume Pretty Derby",
+    "cycles_per_session": 11,
+    "device_resolution": [540, 960],
+    "discord_webhook_url": "YOUR_DISCORD_WEBHOOK_URL_HERE",
+    
+    "card_scoring": {
+        "kitasan": 15,
+        "supercreek": 10,
+        "finemotion": 10
+    },
+    "default_item_score": 5,
+    
+    "template_thresholds": {
+        "until gacha": 0.8,
+        "first_gacha": 0.8
+    },
+    
+    "detection_regions": {
+        "slot1": [0.096, 0.105, 0.211, 0.157],
+        "slot2": [0.393, 0.105, 0.217, 0.156],
+        "slot3": [0.696, 0.103, 0.209, 0.157],
+        "slot4": [0.244, 0.289, 0.211, 0.158],
+        "slot5": [0.546, 0.291, 0.211, 0.157],
+        "slot6": [0.098, 0.480, 0.209, 0.155],
+        "slot7": [0.396, 0.481, 0.209, 0.155],
+        "slot8": [0.694, 0.481, 0.209, 0.157],
+        "slot9": [0.244, 0.671, 0.213, 0.155],
+        "slot10": [0.546, 0.670, 0.211, 0.155]
+    }
+} 

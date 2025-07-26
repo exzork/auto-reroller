@@ -149,12 +149,12 @@ class MacroToADBExecutor:
         
         if command.startswith("sleep "):
             delay = float(command.split()[1])
-            print(f"Waiting {delay:.3f} seconds...")
+            # print(f"Waiting {delay:.3f} seconds...")
             time.sleep(delay)
             return True
         
         try:
-            print(f"Executing: {command}")
+            # print(f"Executing: {command}")
             result = subprocess.run(command, shell=True, capture_output=True, text=True, timeout=10)
             if result.returncode != 0:
                 print(f"Warning: Command failed with return code {result.returncode}")
