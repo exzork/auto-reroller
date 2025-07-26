@@ -1,0 +1,7 @@
+numpy
+opencv_python==4.12.0.88
+pyautogui==0.9.54
+pyperclip==1.9.0
+pytesseract==0.3.13
+pywin32==310
+Requests==2.32.4
