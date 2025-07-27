@@ -369,13 +369,14 @@
 
         async function loadScreenshots() {
             try {
+                // First get the list of devices
                 const response = await fetch('/api/screenshots');
                 const data = await response.json();
                 
                 const grid = document.getElementById('screenshots-grid');
                 grid.innerHTML = '';
                 
-                if (Object.keys(data.screenshots).length === 0) {
+                if (data.devices.length === 0) {
                     grid.innerHTML = `
                         <div class="device-screenshot">
                             <div class="device-header">
@@ -390,20 +391,46 @@
                     return;
                 }
                 
-                // Show compression stats if available
-                if (data.successful_screenshots !== undefined) {
-                    const statsDiv = document.createElement('div');
-                    statsDiv.style.cssText = 'text-align: center; margin-bottom: 20px; color: #7f8c8d; font-size: 0.9rem;';
-                    statsDiv.textContent = `Successfully captured ${data.successful_screenshots} of ${data.total_devices} device screenshots`;
-                    grid.parentNode.insertBefore(statsDiv, grid);
+                // Create device elements first
+                for (const device of data.devices) {
+                    const deviceElement = createDeviceElement(device.id, null, device.connected);
+                    grid.appendChild(deviceElement);
                 }
                 
-                for (const [deviceId, screenshot] of Object.entries(data.screenshots)) {
-                    const deviceElement = createDeviceElement(deviceId, screenshot);
-                    grid.appendChild(deviceElement);
+                // Then fetch screenshots for connected devices
+                for (const device of data.devices) {
+                    if (device.connected) {
+                        try {
+                            const screenshotResponse = await fetch(`/api/screenshot/${device.id}`);
+                            if (screenshotResponse.ok) {
+                                const screenshotData = await screenshotResponse.json();
+                                updateDeviceScreenshot(device.id, screenshotData);
+                            }
+                        } catch (error) {
+                            console.error(`Error fetching screenshot for ${device.id}:`, error);
+                        }
+                    }
                 }
             } catch (error) {
                 console.error('Error loading screenshots:', error);
+            }
+        }
+        
+        function updateDeviceScreenshot(deviceId, screenshotData) {
+            const deviceElement = document.querySelector(`[data-device-id="${deviceId}"]`);
+            if (deviceElement) {
+                const imgElement = deviceElement.querySelector('.screenshot-image');
+                if (imgElement) {
+                    imgElement.src = screenshotData.image;
+                    imgElement.style.display = 'block';
+                }
+                
+                // Update compression info if available
+                const compressionInfo = deviceElement.querySelector('.compression-info');
+                if (compressionInfo && screenshotData.compressed_size) {
+                    const sizeKB = (screenshotData.compressed_size / 1024).toFixed(1);
+                    compressionInfo.textContent = `(${sizeKB} KB)`;
+                }
             }
         }
 
@@ -420,18 +447,19 @@
             }
         }
 
-        function createDeviceElement(deviceId, screenshot) {
+        function createDeviceElement(deviceId, screenshot, isConnected) {
             const div = document.createElement('div');
             div.className = 'device-screenshot';
+            div.setAttribute('data-device-id', deviceId);
             
-            const status = screenshot ? 'status-connected' : 'status-disconnected';
-            const statusText = screenshot ? 'Connected' : 'Disconnected';
+            const status = isConnected ? 'status-connected' : 'status-disconnected';
+            const statusText = isConnected ? 'Connected' : 'Disconnected';
             
             // Add compression info if available
             let compressionInfo = '';
             if (screenshot && screenshot.compressed_size) {
                 const sizeKB = (screenshot.compressed_size / 1024).toFixed(1);
-                compressionInfo = `<small style="color: #7f8c8d; font-size: 0.8rem;">(${sizeKB} KB)</small>`;
+                compressionInfo = `<small class="compression-info" style="color: #7f8c8d; font-size: 0.8rem;">(${sizeKB} KB)</small>`;
             }
             
             div.innerHTML = `
@@ -439,12 +467,12 @@
                     <span class="device-id">${deviceId}</span>
                     <div style="display: flex; align-items: center; gap: 10px;">
                         <span class="device-status ${status}">${statusText}</span>
-                        ${screenshot ? `<button onclick="refreshScreenshot('${deviceId}')" style="padding: 2px 8px; font-size: 0.7rem; border: none; border-radius: 10px; background: #3498db; color: white; cursor: pointer;">🔄</button>` : ''}
+                        ${isConnected ? `<button onclick="refreshScreenshot('${deviceId}')" style="padding: 2px 8px; font-size: 0.7rem; border: none; border-radius: 10px; background: #3498db; color: white; cursor: pointer;">🔄</button>` : ''}
                     </div>
                 </div>
                 <div class="screenshot-container">
-                    ${screenshot ? 
-                        `<img src="${screenshot.image}" alt="Screenshot" class="screenshot-image" loading="lazy">` :
+                    ${isConnected ? 
+                        `<img src="${screenshot ? screenshot.image : 'data:image/gif;base64,R0lGODlhAQABAIAAAAAAAP///yH5BAEAAAAALAAAAAABAAEAAAIBRAA7'}" alt="Screenshot" class="screenshot-image" loading="lazy">` :
                         `<div class="screenshot-placeholder">No screenshot available</div>`
                     }
                 </div>
@@ -456,16 +484,11 @@
 
         async function refreshScreenshot(deviceId) {
             try {
-                const response = await fetch(`/api/screenshot/${deviceId}/refresh`, {
-                    method: 'POST',
-                    headers: {
-                        'Content-Type': 'application/json'
-                    }
-                });
+                const response = await fetch(`/api/screenshot/${deviceId}`);
                 
                 if (response.ok) {
-                    // Reload screenshots to show updated image
-                    loadScreenshots();
+                    const screenshotData = await response.json();
+                    updateDeviceScreenshot(deviceId, screenshotData);
                 } else {
                     console.error('Failed to refresh screenshot');
                 }

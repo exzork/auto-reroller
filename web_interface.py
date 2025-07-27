@@ -84,30 +84,25 @@ class WebInterface:
         
         @self.app.route('/api/screenshots')
         def get_screenshots():
-            """Get fresh screenshots from all devices"""
-            screenshots = {}
+            """Get list of available devices (no screenshots)"""
             try:
-                # Fetch fresh screenshots for each device
+                devices = []
                 for device_id in self.device_manager.get_device_list():
-                    if self.device_manager.is_device_connected(device_id):
-                        screenshot_data = self.get_device_screenshot(device_id)
-                        if screenshot_data:
-                            screenshots[device_id] = screenshot_data
-                        elif self.verbose:
-                            print(f"⚠️ Failed to get screenshot for {device_id}")
+                    devices.append({
+                        'id': device_id,
+                        'connected': self.device_manager.is_device_connected(device_id)
+                    })
+                return jsonify({
+                    'devices': devices,
+                    'timestamp': datetime.now().isoformat()
+                })
             except Exception as e:
-                print(f"Error getting screenshots: {e}")
-            
-            return jsonify({
-                'screenshots': screenshots,
-                'timestamp': datetime.now().isoformat(),
-                'total_devices': len(self.device_manager.get_device_list()),
-                'successful_screenshots': len(screenshots)
-            })
+                print(f"Error getting devices: {e}")
+                return jsonify({'devices': [], 'timestamp': datetime.now().isoformat()})
         
         @self.app.route('/api/screenshot/<device_id>')
         def get_device_screenshot_route(device_id):
-            """Get screenshot for specific device"""
+            """Get fresh screenshot for specific device"""
             screenshot_data = self.get_device_screenshot(device_id)
             if screenshot_data:
                 return jsonify(screenshot_data)
