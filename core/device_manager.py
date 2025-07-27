@@ -4,7 +4,9 @@ Device Manager for handling ADB connections and device management
 
 import subprocess
 import time
+import os
 from typing import List, Optional
+from pathlib import Path
 
 
 class DeviceManager:
@@ -13,6 +15,12 @@ class DeviceManager:
     def __init__(self):
         self.device_list = []
         self.initialized = False
+        self.minicap_installed = {}  # Track minicap installation per device
+        self.minicap_processes = {}  # Track minicap processes per device
+        
+        # Minicap paths
+        self.minicap_bin = "minicap"
+        self.minicap_so = "minicap.so"
     
     def initialize(self) -> bool:
         """Initialize ADB and detect connected devices"""
@@ -67,8 +75,210 @@ class DeviceManager:
         except Exception:
             return False
     
+    def get_device_info(self, device_id: str) -> Optional[dict]:
+        """Get device information including screen resolution"""
+        try:
+            # Get screen resolution
+            result = self.execute_adb_command(
+                device_id, 
+                ['shell', 'wm', 'size']
+            )
+            if result and result.returncode == 0:
+                size_output = result.stdout.decode().strip()
+                if 'Physical size:' in size_output:
+                    size = size_output.split(': ')[1]
+                    width, height = map(int, size.split('x'))
+                    return {
+                        'width': width,
+                        'height': height,
+                        'size': size
+                    }
+            
+            # Fallback to default resolution
+            return {
+                'width': 1080,
+                'height': 1920,
+                'size': '1080x1920'
+            }
+        except Exception as e:
+            print(f"Error getting device info for {device_id}: {e}")
+            return None
+    
+    def install_minicap(self, device_id: str) -> bool:
+        """Install minicap on the device"""
+        try:
+            print(f"🔧 Installing minicap on {device_id}...")
+            
+            # Get device info
+            device_info = self.get_device_info(device_id)
+            if not device_info:
+                print(f"❌ Failed to get device info for {device_id}")
+                return False
+            
+            # Get device architecture
+            arch_result = self.execute_adb_command(
+                device_id, 
+                ['shell', 'getprop', 'ro.product.cpu.abi']
+            )
+            if not arch_result or arch_result.returncode != 0:
+                print(f"❌ Failed to get device architecture for {device_id}")
+                return False
+            
+            arch = arch_result.stdout.decode().strip()
+            print(f"📱 Device architecture: {arch}")
+            
+            # Determine minicap binary and library paths
+            minicap_path = Path(__file__).parent.parent / "minicap" / arch
+            minicap_bin_path = minicap_path / self.minicap_bin
+            minicap_so_path = minicap_path / self.minicap_so
+            
+            if not minicap_bin_path.exists():
+                print(f"❌ Minicap binary not found at {minicap_bin_path}")
+                return False
+            
+            if not minicap_so_path.exists():
+                print(f"❌ Minicap library not found at {minicap_so_path}")
+                return False
+            
+            # Push minicap binary to device
+            print(f"📤 Pushing minicap binary to {device_id}...")
+            push_bin_result = self.execute_adb_command(
+                device_id,
+                ['push', str(minicap_bin_path), '/data/local/tmp/minicap']
+            )
+            if not push_bin_result or push_bin_result.returncode != 0:
+                print(f"❌ Failed to push minicap binary to {device_id}")
+                return False
+            
+            # Push minicap library to device
+            print(f"📤 Pushing minicap library to {device_id}...")
+            push_so_result = self.execute_adb_command(
+                device_id,
+                ['push', str(minicap_so_path), '/data/local/tmp/minicap.so']
+            )
+            if not push_so_result or push_so_result.returncode != 0:
+                print(f"❌ Failed to push minicap library to {device_id}")
+                return False
+            
+            # Set permissions
+            print(f"🔐 Setting permissions on {device_id}...")
+            chmod_result = self.execute_adb_command(
+                device_id,
+                ['shell', 'chmod', '777', '/data/local/tmp/minicap']
+            )
+            if not chmod_result or chmod_result.returncode != 0:
+                print(f"❌ Failed to set permissions on {device_id}")
+                return False
+            
+            # Test minicap
+            print(f"🧪 Testing minicap on {device_id}...")
+            test_result = self.execute_adb_command(
+                device_id,
+                ['shell', 'LD_LIBRARY_PATH=/data/local/tmp /data/local/tmp/minicap -h']
+            )
+            if not test_result or test_result.returncode != 0:
+                print(f"❌ Minicap test failed on {device_id}")
+                return False
+            
+            self.minicap_installed[device_id] = True
+            print(f"✅ Minicap installed successfully on {device_id}")
+            return True
+            
+        except Exception as e:
+            print(f"❌ Error installing minicap on {device_id}: {e}")
+            return False
+    
+    def start_minicap_stream(self, device_id: str, port: int = 1313) -> bool:
+        """Start minicap streaming on the device"""
+        try:
+            if device_id not in self.minicap_installed:
+                if not self.install_minicap(device_id):
+                    return False
+            
+            # Get device info
+            device_info = self.get_device_info(device_id)
+            if not device_info:
+                return False
+            
+            # Kill any existing minicap process
+            self.stop_minicap_stream(device_id)
+            
+            # Start minicap with streaming
+            print(f"🚀 Starting minicap stream on {device_id}...")
+            cmd = [
+                'shell',
+                'LD_LIBRARY_PATH=/data/local/tmp',
+                '/data/local/tmp/minicap',
+                '-P', f'{device_info["width"]}x{device_info["height"]}@{device_info["width"]}x{device_info["height"]}/0',
+                '-S'
+            ]
+            
+            # Start minicap process
+            process = subprocess.Popen(
+                ['adb', '-s', device_id] + cmd,
+                stdout=subprocess.PIPE,
+                stderr=subprocess.PIPE
+            )
+            
+            self.minicap_processes[device_id] = process
+            
+            # Wait a moment for minicap to start
+            time.sleep(2)
+            
+            # Check if process is still running
+            if process.poll() is None:
+                print(f"✅ Minicap stream started on {device_id}")
+                return True
+            else:
+                print(f"❌ Minicap stream failed to start on {device_id}")
+                return False
+                
+        except Exception as e:
+            print(f"❌ Error starting minicap stream on {device_id}: {e}")
+            return False
+    
+    def stop_minicap_stream(self, device_id: str):
+        """Stop minicap streaming on the device"""
+        try:
+            # Kill minicap process if running
+            if device_id in self.minicap_processes:
+                process = self.minicap_processes[device_id]
+                if process.poll() is None:
+                    process.terminate()
+                    process.wait(timeout=5)
+                del self.minicap_processes[device_id]
+            
+            # Kill any remaining minicap processes
+            self.execute_adb_command(
+                device_id,
+                ['shell', 'pkill', '-f', 'minicap']
+            )
+            
+            print(f"🛑 Minicap stream stopped on {device_id}")
+            
+        except Exception as e:
+            print(f"❌ Error stopping minicap stream on {device_id}: {e}")
+    
+    def get_minicap_stream_url(self, device_id: str, port: int = 1313) -> Optional[str]:
+        """Get the URL for minicap stream"""
+        try:
+            # Forward port to device
+            forward_result = self.execute_adb_command(
+                device_id,
+                ['forward', f'tcp:{port}', 'localabstract:minicap']
+            )
+            
+            if forward_result and forward_result.returncode == 0:
+                return f"http://localhost:{port}"
+            else:
+                return None
+                
+        except Exception as e:
+            print(f"❌ Error getting minicap stream URL for {device_id}: {e}")
+            return None
+    
     def get_screenshot(self, device_id: str) -> Optional[bytes]:
-        """Get screenshot from specific device"""
+        """Get screenshot from specific device (fallback to ADB)"""
         try:
             result = subprocess.run([
                 'adb', '-s', device_id, 'exec-out', 'screencap', '-p'
@@ -146,4 +356,9 @@ class DeviceManager:
             return None
         except Exception as e:
             print(f"❌ Error getting clipboard from {device_id}: {e}")
-            return None 
+            return None
+    
+    def cleanup(self):
+        """Cleanup minicap processes on all devices"""
+        for device_id in self.device_list:
+            self.stop_minicap_stream(device_id) 

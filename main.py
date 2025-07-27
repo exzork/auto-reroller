@@ -222,6 +222,9 @@ def main():
     if args.web or args.web_only:
         web_interface = create_web_interface(verbose=args.verbose)
         print(f"🌐 Web interface will be available at http://{args.web_host}:{args.web_port}")
+        if args.web:
+            print("🔧 Minicap will be auto-installed on connected devices for streaming support")
+        print("")
     
     try:
         # Create game instance if game specified

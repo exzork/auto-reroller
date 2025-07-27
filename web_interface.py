@@ -102,12 +102,56 @@ class WebInterface:
         
         @self.app.route('/api/screenshot/<device_id>')
         def get_device_screenshot_route(device_id):
-            """Get fresh screenshot for specific device"""
+            """Get fresh screenshot for specific device (fallback to ADB)"""
             screenshot_data = self.get_device_screenshot(device_id)
             if screenshot_data:
                 return jsonify(screenshot_data)
             else:
                 return jsonify({'error': 'Screenshot not available'}), 404
+        
+        @self.app.route('/api/stream/<device_id>')
+        def get_device_stream(device_id):
+            """Get minicap stream URL for device"""
+            try:
+                # Check if device is connected
+                if not self.device_manager.is_device_connected(device_id):
+                    return jsonify({'error': 'Device not connected'}), 404
+                
+                # Check if minicap is installed
+                if device_id not in self.device_manager.minicap_installed:
+                    # Try to install minicap
+                    if not self.device_manager.install_minicap(device_id):
+                        return jsonify({
+                            'error': 'Minicap not available',
+                            'fallback': f'/api/screenshot/{device_id}'
+                        }), 503
+                
+                # Start minicap stream if not already running
+                if not self.device_manager.start_minicap_stream(device_id):
+                    return jsonify({'error': 'Failed to start minicap stream'}), 500
+                
+                # Get stream URL
+                stream_url = self.device_manager.get_minicap_stream_url(device_id)
+                if stream_url:
+                    return jsonify({
+                        'device_id': device_id,
+                        'stream_url': stream_url,
+                        'type': 'minicap'
+                    })
+                else:
+                    return jsonify({'error': 'Failed to get stream URL'}), 500
+                    
+            except Exception as e:
+                return jsonify({'error': str(e)}), 500
+        
+        @self.app.route('/api/stream/<device_id>/stop', methods=['POST'])
+        def stop_device_stream(device_id):
+            """Stop minicap stream for device"""
+            try:
+                self.device_manager.stop_minicap_stream(device_id)
+                return jsonify({'status': 'stopped', 'device_id': device_id})
+            except Exception as e:
+                return jsonify({'error': str(e)}), 500
         
         @self.app.route('/api/screenshot/<device_id>/refresh', methods=['POST'])
         def refresh_device_screenshot(device_id):
@@ -342,6 +386,25 @@ class WebInterface:
             if not self.device_manager.initialize():
                 print("⚠️ Failed to initialize device manager (ADB not available)")
                 print("   The web interface will still work, but device screenshots may not be available")
+            else:
+                # Check if minicap files are available
+                minicap_dir = Path(__file__).parent / "minicap"
+                if not minicap_dir.exists():
+                    print("⚠️ Minicap directory not found")
+                    print("   Please run 'python setup_minicap.py' to set up minicap files")
+                    print("   Will use ADB screenshots as fallback")
+                else:
+                    # Auto-install minicap on all connected devices
+                    print("🔧 Auto-installing minicap on connected devices...")
+                    devices = self.device_manager.get_device_list()
+                    for device_id in devices:
+                        if self.device_manager.is_device_connected(device_id):
+                            print(f"📱 Installing minicap on {device_id}...")
+                            if self.device_manager.install_minicap(device_id):
+                                print(f"✅ Minicap installed on {device_id}")
+                            else:
+                                print(f"⚠️ Failed to install minicap on {device_id} (will use ADB fallback)")
+                    print("🎉 Minicap installation complete")
         except Exception as e:
             print(f"⚠️ Device manager error: {e}")
         
@@ -358,6 +421,9 @@ class WebInterface:
             print("\n🛑 Web interface stopped by user")
         finally:
             self.stop_ngrok_tunnel()
+            # Cleanup minicap streams
+            if hasattr(self.device_manager, 'cleanup'):
+                self.device_manager.cleanup()
         
         return True
 
