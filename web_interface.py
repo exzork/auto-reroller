@@ -48,10 +48,6 @@ class WebInterface:
         self.device_manager = DeviceManager()
         self.verbose = verbose
         
-        # Screenshot cache
-        self.screenshot_cache = {}
-        self.last_screenshot_time = {}
-        
         # Stats tracking
         self.stats = {
             'start_time': datetime.now(),
@@ -70,8 +66,7 @@ class WebInterface:
         # Setup routes
         self.setup_routes()
         
-        # Start screenshot thread
-        self.screenshot_thread = None
+        # No screenshot thread needed since we fetch on demand
         self.running = False
     
     def setup_routes(self):
@@ -89,19 +84,25 @@ class WebInterface:
         
         @self.app.route('/api/screenshots')
         def get_screenshots():
-            """Get all device screenshots"""
+            """Get fresh screenshots from all devices"""
             screenshots = {}
             try:
+                # Fetch fresh screenshots for each device
                 for device_id in self.device_manager.get_device_list():
-                    screenshot_data = self.get_device_screenshot(device_id)
-                    if screenshot_data:
-                        screenshots[device_id] = screenshot_data
+                    if self.device_manager.is_device_connected(device_id):
+                        screenshot_data = self.get_device_screenshot(device_id)
+                        if screenshot_data:
+                            screenshots[device_id] = screenshot_data
+                        elif self.verbose:
+                            print(f"⚠️ Failed to get screenshot for {device_id}")
             except Exception as e:
                 print(f"Error getting screenshots: {e}")
             
             return jsonify({
                 'screenshots': screenshots,
-                'timestamp': datetime.now().isoformat()
+                'timestamp': datetime.now().isoformat(),
+                'total_devices': len(self.device_manager.get_device_list()),
+                'successful_screenshots': len(screenshots)
             })
         
         @self.app.route('/api/screenshot/<device_id>')
@@ -113,6 +114,22 @@ class WebInterface:
             else:
                 return jsonify({'error': 'Screenshot not available'}), 404
         
+        @self.app.route('/api/screenshot/<device_id>/refresh', methods=['POST'])
+        def refresh_device_screenshot(device_id):
+            """Force refresh screenshot for specific device"""
+            try:
+                screenshot_data = self.get_device_screenshot(device_id)
+                if screenshot_data:
+                    return jsonify({
+                        'status': 'success',
+                        'device_id': device_id,
+                        'screenshot': screenshot_data
+                    })
+                else:
+                    return jsonify({'error': 'Failed to get screenshot'}), 404
+            except Exception as e:
+                return jsonify({'error': str(e)}), 500
+        
         @self.app.route('/api/devices')
         def get_devices():
             """Get list of connected devices"""
@@ -121,15 +138,14 @@ class WebInterface:
                 for device_id in self.device_manager.get_device_list():
                     devices.append({
                         'id': device_id,
-                        'connected': self.device_manager.is_device_connected(device_id),
-                        'last_screenshot': self.last_screenshot_time.get(device_id)
+                        'connected': self.device_manager.is_device_connected(device_id)
                     })
             except Exception as e:
                 print(f"Error getting devices: {e}")
                 # Return mock data if ADB is not available
                 devices = [
-                    {'id': 'emulator-5554', 'connected': False, 'last_screenshot': None},
-                    {'id': 'emulator-5556', 'connected': False, 'last_screenshot': None}
+                    {'id': 'emulator-5554', 'connected': False},
+                    {'id': 'emulator-5556', 'connected': False}
                 ]
             return jsonify({'devices': devices})
         
@@ -173,14 +189,15 @@ class WebInterface:
             # Get raw screenshot data
             screenshot_data = self.device_manager.get_screenshot(device_id)
             if not screenshot_data:
-                print(f"⚠️ No screenshot data received for device {device_id}")
+                if self.verbose:
+                    print(f"⚠️ No screenshot data received for device {device_id}")
                 return None
             
             # Convert to PIL Image for processing
             image = Image.open(io.BytesIO(screenshot_data))
             
             # Log image details for debugging
-            if hasattr(self, 'verbose') and self.verbose:
+            if self.verbose:
                 print(f"📸 Processing screenshot for {device_id}: {image.size} {image.mode}")
             
             # Convert RGBA to RGB if necessary (JPEG doesn't support alpha channel)
@@ -190,18 +207,18 @@ class WebInterface:
                 # Paste the image onto the background
                 background.paste(image, mask=image.split()[-1])  # Use alpha channel as mask
                 image = background
-                if hasattr(self, 'verbose') and self.verbose:
+                if self.verbose:
                     print(f"   Converted RGBA to RGB for {device_id}")
             elif image.mode != 'RGB':
                 # Convert other modes to RGB
                 original_mode = image.mode
                 image = image.convert('RGB')
-                if hasattr(self, 'verbose') and self.verbose:
+                if self.verbose:
                     print(f"   Converted {original_mode} to RGB for {device_id}")
             
-            # Resize for web display (maintain aspect ratio)
-            max_width = 800
-            max_height = 600
+            # Optimize image size for web display
+            max_width = 600  # Reduced from 800 for better performance
+            max_height = 450  # Reduced from 600 for better performance
             
             # Calculate new dimensions
             width, height = image.size
@@ -210,25 +227,38 @@ class WebInterface:
                 new_width = int(width * ratio)
                 new_height = int(height * ratio)
                 image = image.resize((new_width, new_height), Image.Resampling.LANCZOS)
-                if hasattr(self, 'verbose') and self.verbose:
+                if self.verbose:
                     print(f"   Resized from {width}x{height} to {new_width}x{new_height}")
             
-            # Convert to base64 for web display
+            # Apply additional compression and optimization
+            # Convert to base64 with higher compression
             buffer = io.BytesIO()
-            image.save(buffer, format='JPEG', quality=85)
-            img_str = base64.b64encode(buffer.getvalue()).decode()
+            
+            # Use progressive JPEG for better web loading
+            image.save(buffer, format='JPEG', quality=70, optimize=True, progressive=True)
+            
+            # Get the compressed data
+            compressed_data = buffer.getvalue()
+            img_str = base64.b64encode(compressed_data).decode()
+            
+            if self.verbose:
+                original_size = len(screenshot_data)
+                compressed_size = len(compressed_data)
+                compression_ratio = (1 - compressed_size / original_size) * 100
+                print(f"   Compressed: {original_size} → {compressed_size} bytes ({compression_ratio:.1f}% reduction)")
             
             return {
                 'device_id': device_id,
                 'image': f"data:image/jpeg;base64,{img_str}",
                 'timestamp': datetime.now().isoformat(),
-                'size': image.size
+                'size': image.size,
+                'compressed_size': len(compressed_data)
             }
             
         except Exception as e:
             print(f"❌ Error getting screenshot for {device_id}: {e}")
             import traceback
-            if hasattr(self, 'verbose') and self.verbose:
+            if self.verbose:
                 traceback.print_exc()
             return None
     
@@ -308,38 +338,6 @@ class WebInterface:
             except Exception as e:
                 print(f"❌ Error stopping ngrok tunnel: {e}")
     
-    def start_screenshot_thread(self):
-        """Start background thread for capturing screenshots"""
-        if self.screenshot_thread and self.screenshot_thread.is_alive():
-            return
-        
-        self.running = True
-        self.screenshot_thread = threading.Thread(target=self._screenshot_loop, daemon=True)
-        self.screenshot_thread.start()
-    
-    def stop_screenshot_thread(self):
-        """Stop screenshot thread"""
-        self.running = False
-        if self.screenshot_thread:
-            self.screenshot_thread.join(timeout=2)
-    
-    def _screenshot_loop(self):
-        """Background loop for capturing screenshots at 1 FPS"""
-        while self.running:
-            try:
-                for device_id in self.device_manager.get_device_list():
-                    if self.device_manager.is_device_connected(device_id):
-                        screenshot_data = self.get_device_screenshot(device_id)
-                        if screenshot_data:
-                            self.screenshot_cache[device_id] = screenshot_data
-                            self.last_screenshot_time[device_id] = datetime.now()
-                
-                time.sleep(1)  # 1 FPS
-                
-            except Exception as e:
-                print(f"Error in screenshot loop: {e}")
-                time.sleep(5)  # Wait before retrying
-    
     def start(self, host: str = '0.0.0.0', port: int = 5000, debug: bool = False, use_ngrok: bool = True):
         """Start the web interface"""
         print(f"🌐 Starting web interface on http://{host}:{port}")
@@ -359,15 +357,11 @@ class WebInterface:
             else:
                 print("⚠️ ngrok tunnel failed, running locally only")
         
-        # Start screenshot thread
-        self.start_screenshot_thread()
-        
         try:
             self.app.run(host=host, port=port, debug=debug, threaded=True)
         except KeyboardInterrupt:
             print("\n🛑 Web interface stopped by user")
         finally:
-            self.stop_screenshot_thread()
             self.stop_ngrok_tunnel()
         
         return True

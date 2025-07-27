@@ -390,6 +390,14 @@
                     return;
                 }
                 
+                // Show compression stats if available
+                if (data.successful_screenshots !== undefined) {
+                    const statsDiv = document.createElement('div');
+                    statsDiv.style.cssText = 'text-align: center; margin-bottom: 20px; color: #7f8c8d; font-size: 0.9rem;';
+                    statsDiv.textContent = `Successfully captured ${data.successful_screenshots} of ${data.total_devices} device screenshots`;
+                    grid.parentNode.insertBefore(statsDiv, grid);
+                }
+                
                 for (const [deviceId, screenshot] of Object.entries(data.screenshots)) {
                     const deviceElement = createDeviceElement(deviceId, screenshot);
                     grid.appendChild(deviceElement);
@@ -419,20 +427,51 @@
             const status = screenshot ? 'status-connected' : 'status-disconnected';
             const statusText = screenshot ? 'Connected' : 'Disconnected';
             
+            // Add compression info if available
+            let compressionInfo = '';
+            if (screenshot && screenshot.compressed_size) {
+                const sizeKB = (screenshot.compressed_size / 1024).toFixed(1);
+                compressionInfo = `<small style="color: #7f8c8d; font-size: 0.8rem;">(${sizeKB} KB)</small>`;
+            }
+            
             div.innerHTML = `
                 <div class="device-header">
                     <span class="device-id">${deviceId}</span>
-                    <span class="device-status ${status}">${statusText}</span>
+                    <div style="display: flex; align-items: center; gap: 10px;">
+                        <span class="device-status ${status}">${statusText}</span>
+                        ${screenshot ? `<button onclick="refreshScreenshot('${deviceId}')" style="padding: 2px 8px; font-size: 0.7rem; border: none; border-radius: 10px; background: #3498db; color: white; cursor: pointer;">🔄</button>` : ''}
+                    </div>
                 </div>
                 <div class="screenshot-container">
                     ${screenshot ? 
-                        `<img src="${screenshot.image}" alt="Screenshot" class="screenshot-image">` :
+                        `<img src="${screenshot.image}" alt="Screenshot" class="screenshot-image" loading="lazy">` :
                         `<div class="screenshot-placeholder">No screenshot available</div>`
                     }
                 </div>
+                ${compressionInfo}
             `;
             
             return div;
+        }
+
+        async function refreshScreenshot(deviceId) {
+            try {
+                const response = await fetch(`/api/screenshot/${deviceId}/refresh`, {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json'
+                    }
+                });
+                
+                if (response.ok) {
+                    // Reload screenshots to show updated image
+                    loadScreenshots();
+                } else {
+                    console.error('Failed to refresh screenshot');
+                }
+            } catch (error) {
+                console.error('Error refreshing screenshot:', error);
+            }
         }
 
         async function startAutomation() {
