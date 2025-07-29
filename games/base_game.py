@@ -8,6 +8,9 @@ import json
 import os
 from pathlib import Path
 
+# Import action types
+from core.action_types import ActionConfig, StateConfig, AutomationStates, validate_action_config
+
 
 class BaseGame(ABC):
     """Abstract base class for game automation"""
@@ -63,7 +66,8 @@ class BaseGame(ABC):
             "state_name": {
                 "timeout": 60,
                 "templates": ["template1", "template2"],
-                "macros": ["macro1"],
+                "actions": [ActionConfig],  # New actions field with proper typing
+                "macros": ["macro1"],      # Legacy macros field
                 "next_states": ["next_state1", "next_state2"]
             }
         }

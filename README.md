@@ -409,3 +409,64 @@ python macro.py games/umamusume/macros/gacha.record --width 540 --height 960 --d
 ## License
 
 This project is provided as-is for educational purposes. Ensure compliance with game terms of service and local laws when using automation tools. 
+
+## Action Types
+
+The framework supports multiple action types for automation:
+
+### Macro Actions
+Execute pre-recorded macro files:
+```python
+create_macro_action("macro_name", timeout=30, speed_multiplier=1.5)
+```
+
+### Tap Actions
+Tap at template locations or coordinates:
+```python
+create_tap_action("button_template", coordinates=(100, 200), delay_before=0.5)
+```
+
+### Typing Actions
+Input text with keyboard:
+```python
+create_typing_action(
+    text="123456789",
+    template="input_field",  # Template to tap before typing
+    clear_first=True,        # Clear existing text first
+    press_enter=True,        # Press Enter after typing
+    delay_after=1.0
+)
+```
+
+### Wait Actions
+Wait for specified duration or condition:
+```python
+create_wait_action(2.5, condition="loading_screen", timeout=30)
+```
+
+### Swipe Actions
+Perform swipe gestures:
+```python
+create_swipe_action(
+    start_coordinates=(100, 200),
+    end_coordinates=(300, 400),
+    duration=1000  # milliseconds
+)
+```
+
+### Screenshot Actions
+Capture and optionally process screenshots:
+```python
+create_screenshot_action(save_path="debug.png", process_items=True)
+```
+
+## Improved Template Detection
+
+The framework now includes improved template detection for tap actions:
+
+- **Automatic Scanning**: If coordinates aren't available, the system automatically scans the current screenshot for the template
+- **Real-time Detection**: Templates are detected in real-time before executing taps
+- **Coordinate Storage**: Detected coordinates are stored for future use
+- **Fallback Handling**: If template detection fails, the action is marked as failed
+
+This ensures more reliable automation even when UI elements move or change positions. 

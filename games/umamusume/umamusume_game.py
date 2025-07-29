@@ -10,6 +10,10 @@ import numpy as np
 from typing import Dict, Any, List, Tuple, Optional
 from pathlib import Path
 from games.base_game import BaseGame
+from core.action_types import (
+    create_macro_action, create_tap_action, create_wait_action, create_typing_action,
+    ActionConfig, StateConfig
+)
 
 
 class UmamusumeGame(BaseGame):
@@ -73,45 +77,48 @@ class UmamusumeGame(BaseGame):
             "waiting_for_until_gacha": {
                 "timeout": 30,
                 "templates": ["until gacha"],
-                "macros": [],
+                "actions": [],
                 "next_states": ["executing_until_gacha"]
             },
             "executing_until_gacha": {
                 "timeout": 110,
                 "templates": [],
-                "macros": ["until gacha"],
+                "actions": [create_macro_action("until gacha")],
                 "next_states": ["waiting_for_first_gacha"]
             },
             "waiting_for_first_gacha": {
                 "timeout": 45,
                 "templates": ["first_gacha"],
-                "macros": [],
+                "actions": [],
                 "next_states": ["pulling_first_gacha"]
             },
             "pulling_first_gacha": {
                 "timeout": 30,
                 "templates": [],
-                "macros": ["first_gacha"],
+                "actions": [create_macro_action("first_gacha")],
                 "processes_items": True,
                 "next_states": ["pulling_gacha"]
             },
             "pulling_gacha": {
                 "timeout": 180,
                 "templates": [],
-                "macros": ["gacha"],
+                "actions": [create_macro_action("gacha")],
                 "processes_items": True,
                 "next_states": ["executing_bind_id", "pulling_gacha"]
             },
             "executing_bind_id": {
                 "timeout": 120,
                 "templates": [],
-                "macros": ["back_home", "bind_id"],
+                "actions": [
+                    create_macro_action("back_home"),
+                    create_macro_action("bind_id")
+                ],
                 "next_states": ["completed"]
             },
             "completed": {
                 "timeout": 30,
                 "templates": [],
-                "macros": [],
+                "actions": [],
                 "next_states": ["waiting_for_until_gacha"]
             }
         }

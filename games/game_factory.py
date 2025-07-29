@@ -12,12 +12,19 @@ class GameFactory:
     """Factory for creating game instances"""
     
     @staticmethod
+    def _convert_to_camel_case(name: str) -> str:
+        """Convert kebab-case or snake_case to CamelCase"""
+        # Replace hyphens and underscores with spaces, then title case
+        parts = name.replace('-', ' ').replace('_', ' ').split()
+        return ''.join(word.title() for word in parts)
+    
+    @staticmethod
     def create_game(game_name: str, config_path: Optional[str] = None) -> Optional[BaseGame]:
         """Create a game instance based on game name"""
         try:
             # Construct module and class names
             module_name = f"games.{game_name}.{game_name}_game"
-            class_name = f"{game_name.title()}Game"
+            class_name = f"{GameFactory._convert_to_camel_case(game_name)}Game"
             
             # Import the game module
             game_module = importlib.import_module(module_name)

@@ -1,0 +1,549 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Uma Musume Friend Point Service</title>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+        
+        body {
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            min-height: 100vh;
+            color: #333;
+        }
+        
+        .container {
+            max-width: 1200px;
+            margin: 0 auto;
+            padding: 20px;
+        }
+        
+        .header {
+            text-align: center;
+            margin-bottom: 30px;
+            color: white;
+        }
+        
+        .header h1 {
+            font-size: 2.5rem;
+            margin-bottom: 10px;
+            text-shadow: 2px 2px 4px rgba(0,0,0,0.3);
+        }
+        
+        .header p {
+            font-size: 1.1rem;
+            opacity: 0.9;
+        }
+        
+        .dashboard-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(300px, 1fr));
+            gap: 20px;
+            margin-bottom: 30px;
+        }
+        
+        .card {
+            background: white;
+            border-radius: 15px;
+            padding: 25px;
+            box-shadow: 0 10px 30px rgba(0,0,0,0.1);
+            transition: transform 0.3s ease;
+        }
+        
+        .card:hover {
+            transform: translateY(-5px);
+        }
+        
+        .card h3 {
+            color: #667eea;
+            margin-bottom: 15px;
+            font-size: 1.3rem;
+        }
+        
+        .stats-grid {
+            display: grid;
+            grid-template-columns: repeat(2, 1fr);
+            gap: 15px;
+        }
+        
+        .stat-item {
+            text-align: center;
+            padding: 15px;
+            background: #f8f9fa;
+            border-radius: 10px;
+        }
+        
+        .stat-value {
+            font-size: 2rem;
+            font-weight: bold;
+            color: #667eea;
+        }
+        
+        .stat-label {
+            font-size: 0.9rem;
+            color: #666;
+            margin-top: 5px;
+        }
+        
+        .form-group {
+            margin-bottom: 20px;
+        }
+        
+        .form-group label {
+            display: block;
+            margin-bottom: 8px;
+            font-weight: 600;
+            color: #555;
+        }
+        
+        .form-group input, .form-group select {
+            width: 100%;
+            padding: 12px;
+            border: 2px solid #e1e5e9;
+            border-radius: 8px;
+            font-size: 1rem;
+            transition: border-color 0.3s ease;
+        }
+        
+        .form-group input:focus, .form-group select:focus {
+            outline: none;
+            border-color: #667eea;
+        }
+        
+        .btn {
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            color: white;
+            border: none;
+            padding: 12px 25px;
+            border-radius: 8px;
+            font-size: 1rem;
+            cursor: pointer;
+            transition: transform 0.3s ease;
+            width: 100%;
+        }
+        
+        .btn:hover {
+            transform: translateY(-2px);
+        }
+        
+        .btn:disabled {
+            opacity: 0.6;
+            cursor: not-allowed;
+            transform: none;
+        }
+        
+        .requests-list {
+            max-height: 400px;
+            overflow-y: auto;
+        }
+        
+        .request-item {
+            background: #f8f9fa;
+            border-radius: 10px;
+            padding: 15px;
+            margin-bottom: 10px;
+            border-left: 4px solid #667eea;
+        }
+        
+        .request-header {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            margin-bottom: 10px;
+        }
+        
+        .request-id {
+            font-weight: bold;
+            color: #667eea;
+        }
+        
+        .request-status {
+            padding: 4px 12px;
+            border-radius: 20px;
+            font-size: 0.8rem;
+            font-weight: bold;
+        }
+        
+        .status-idle { background: #e3f2fd; color: #1976d2; }
+        .status-running { background: #e8f5e8; color: #388e3c; }
+        .status-paused { background: #fff3e0; color: #f57c00; }
+        .status-completed { background: #e8f5e8; color: #388e3c; }
+        .status-error { background: #ffebee; color: #d32f2f; }
+        
+        .request-details {
+            font-size: 0.9rem;
+            color: #666;
+        }
+        
+        .request-actions {
+            margin-top: 10px;
+            display: flex;
+            gap: 10px;
+        }
+        
+        .btn-small {
+            padding: 6px 12px;
+            font-size: 0.8rem;
+            width: auto;
+        }
+        
+        .alert {
+            padding: 15px;
+            border-radius: 8px;
+            margin-bottom: 20px;
+        }
+        
+        .alert-success {
+            background: #e8f5e8;
+            color: #388e3c;
+            border: 1px solid #c8e6c9;
+        }
+        
+        .alert-error {
+            background: #ffebee;
+            color: #d32f2f;
+            border: 1px solid #ffcdd2;
+        }
+        
+        .loading {
+            text-align: center;
+            padding: 20px;
+            color: #666;
+        }
+        
+        @media (max-width: 768px) {
+            .dashboard-grid {
+                grid-template-columns: 1fr;
+            }
+            
+            .stats-grid {
+                grid-template-columns: 1fr;
+            }
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <div class="header">
+            <h1>🎯 Friend Point Service</h1>
+            <p>Automated friend point spam service for Uma Musume</p>
+        </div>
+        
+        <div id="alert-container"></div>
+        
+        <div class="dashboard-grid">
+            <!-- Service Stats -->
+            <div class="card">
+                <h3>📊 Service Statistics</h3>
+                <div class="stats-grid" id="service-stats">
+                    <div class="loading">Loading...</div>
+                </div>
+            </div>
+            
+            <!-- Create Request -->
+            <div class="card">
+                <h3>➕ Create New Request</h3>
+                <form id="create-request-form">
+                    <div class="form-group">
+                        <label for="buyer-id">Buyer ID:</label>
+                        <input type="text" id="buyer-id" name="buyer_id" required placeholder="Enter buyer ID">
+                    </div>
+                    
+                    <div class="form-group">
+                        <label for="target-points">Target Points:</label>
+                        <input type="number" id="target-points" name="target_points" required min="1" placeholder="Enter target points">
+                    </div>
+                    
+                    <div class="form-group">
+                        <label for="support-card-type">Support Card Type:</label>
+                        <select id="support-card-type" name="support_card_type">
+                            <option value="auto">Auto (Best Available)</option>
+                            <option value="ssr">SSR Only</option>
+                            <option value="sr">SR Only</option>
+                            <option value="r">R Only</option>
+                        </select>
+                    </div>
+                    
+                    <div class="form-group">
+                        <label for="priority">Priority:</label>
+                        <select id="priority" name="priority">
+                            <option value="normal">Normal</option>
+                            <option value="high">High</option>
+                            <option value="urgent">Urgent</option>
+                        </select>
+                    </div>
+                    
+                    <button type="submit" class="btn">Create Request</button>
+                </form>
+            </div>
+            
+            <!-- Queue Status -->
+            <div class="card">
+                <h3>📋 Queue Status</h3>
+                <div id="queue-status">
+                    <div class="loading">Loading...</div>
+                </div>
+            </div>
+        </div>
+        
+        <!-- Active Requests -->
+        <div class="card">
+            <h3>🔄 Active Requests</h3>
+            <div class="requests-list" id="active-requests">
+                <div class="loading">Loading...</div>
+            </div>
+        </div>
+        
+        <!-- All Requests -->
+        <div class="card">
+            <h3>📝 All Requests</h3>
+            <div class="requests-list" id="all-requests">
+                <div class="loading">Loading...</div>
+            </div>
+        </div>
+    </div>
+    
+    <script>
+        // API endpoints
+        const API_BASE = '/api/fp/service';
+        
+        // Utility functions
+        function showAlert(message, type = 'success') {
+            const alertContainer = document.getElementById('alert-container');
+            const alert = document.createElement('div');
+            alert.className = `alert alert-${type}`;
+            alert.textContent = message;
+            alertContainer.appendChild(alert);
+            
+            setTimeout(() => {
+                alert.remove();
+            }, 5000);
+        }
+        
+        function formatDate(dateString) {
+            return new Date(dateString).toLocaleString();
+        }
+        
+        function formatNumber(num) {
+            return num.toLocaleString();
+        }
+        
+        // API functions
+        async function fetchAPI(endpoint, options = {}) {
+            try {
+                const response = await fetch(`${API_BASE}${endpoint}`, {
+                    headers: {
+                        'Content-Type': 'application/json',
+                        ...options.headers
+                    },
+                    ...options
+                });
+                
+                if (!response.ok) {
+                    const error = await response.json();
+                    throw new Error(error.error || 'API request failed');
+                }
+                
+                return await response.json();
+            } catch (error) {
+                console.error('API Error:', error);
+                throw error;
+            }
+        }
+        
+        // Load service stats
+        async function loadServiceStats() {
+            try {
+                const stats = await fetchAPI('/stats');
+                const statsContainer = document.getElementById('service-stats');
+                
+                statsContainer.innerHTML = `
+                    <div class="stat-item">
+                        <div class="stat-value">${formatNumber(stats.total_requests)}</div>
+                        <div class="stat-label">Total Requests</div>
+                    </div>
+                    <div class="stat-item">
+                        <div class="stat-value">${formatNumber(stats.completed_requests)}</div>
+                        <div class="stat-label">Completed</div>
+                    </div>
+                    <div class="stat-item">
+                        <div class="stat-value">${formatNumber(stats.total_points_earned)}</div>
+                        <div class="stat-label">Points Earned</div>
+                    </div>
+                    <div class="stat-item">
+                        <div class="stat-value">${stats.average_points_per_request.toFixed(1)}</div>
+                        <div class="stat-label">Avg Points/Request</div>
+                    </div>
+                `;
+            } catch (error) {
+                showAlert('Failed to load service stats: ' + error.message, 'error');
+            }
+        }
+        
+        // Load queue status
+        async function loadQueueStatus() {
+            try {
+                const status = await fetchAPI('/status');
+                const statusContainer = document.getElementById('queue-status');
+                
+                statusContainer.innerHTML = `
+                    <div class="stats-grid">
+                        <div class="stat-item">
+                            <div class="stat-value">${status.total_requests}</div>
+                            <div class="stat-label">Total Requests</div>
+                        </div>
+                        <div class="stat-item">
+                            <div class="stat-value">${status.active_requests}</div>
+                            <div class="stat-label">Active</div>
+                        </div>
+                        <div class="stat-item">
+                            <div class="stat-value">${status.pending_requests}</div>
+                            <div class="stat-label">Pending</div>
+                        </div>
+                        <div class="stat-item">
+                            <div class="stat-value">${status.max_concurrent}</div>
+                            <div class="stat-label">Max Concurrent</div>
+                        </div>
+                    </div>
+                `;
+            } catch (error) {
+                showAlert('Failed to load queue status: ' + error.message, 'error');
+            }
+        }
+        
+        // Load requests
+        async function loadRequests() {
+            try {
+                const data = await fetchAPI('/requests');
+                const requests = data.requests;
+                
+                // Filter active requests
+                const activeRequests = requests.filter(req => req.status === 'running' || req.status === 'paused');
+                const allRequests = requests;
+                
+                // Render active requests
+                const activeContainer = document.getElementById('active-requests');
+                if (activeRequests.length === 0) {
+                    activeContainer.innerHTML = '<div class="loading">No active requests</div>';
+                } else {
+                    activeContainer.innerHTML = activeRequests.map(req => renderRequestItem(req)).join('');
+                }
+                
+                // Render all requests
+                const allContainer = document.getElementById('all-requests');
+                if (allRequests.length === 0) {
+                    allContainer.innerHTML = '<div class="loading">No requests found</div>';
+                } else {
+                    allContainer.innerHTML = allRequests.map(req => renderRequestItem(req)).join('');
+                }
+            } catch (error) {
+                showAlert('Failed to load requests: ' + error.message, 'error');
+            }
+        }
+        
+        // Render request item
+        function renderRequestItem(request) {
+            const progress = request.target_points > 0 ? (request.points_earned / request.target_points * 100).toFixed(1) : 0;
+            
+            return `
+                <div class="request-item">
+                    <div class="request-header">
+                        <span class="request-id">${request.request_id}</span>
+                        <span class="request-status status-${request.status}">${request.status.toUpperCase()}</span>
+                    </div>
+                    <div class="request-details">
+                        <div><strong>Buyer:</strong> ${request.buyer_id}</div>
+                        <div><strong>Target:</strong> ${formatNumber(request.target_points)} points</div>
+                        <div><strong>Earned:</strong> ${formatNumber(request.points_earned)} points (${progress}%)</div>
+                        <div><strong>Cycles:</strong> ${request.cycles_completed}</div>
+                        <div><strong>Created:</strong> ${formatDate(request.created_at)}</div>
+                        ${request.completed_at ? `<div><strong>Completed:</strong> ${formatDate(request.completed_at)}</div>` : ''}
+                        ${request.error_message ? `<div><strong>Error:</strong> ${request.error_message}</div>` : ''}
+                    </div>
+                    <div class="request-actions">
+                        ${request.status === 'idle' ? `<button class="btn btn-small" onclick="startRequest('${request.request_id}')">Start</button>` : ''}
+                        ${request.status === 'running' ? `<button class="btn btn-small" onclick="pauseRequest('${request.request_id}')">Pause</button>` : ''}
+                        ${request.status === 'paused' ? `<button class="btn btn-small" onclick="resumeRequest('${request.request_id}')">Resume</button>` : ''}
+                    </div>
+                </div>
+            `;
+        }
+        
+        // Request actions
+        async function startRequest(requestId) {
+            try {
+                await fetchAPI(`/request/${requestId}/start`, { method: 'POST' });
+                showAlert('Request started successfully');
+                loadRequests();
+            } catch (error) {
+                showAlert('Failed to start request: ' + error.message, 'error');
+            }
+        }
+        
+        async function pauseRequest(requestId) {
+            try {
+                await fetchAPI(`/request/${requestId}/pause`, { method: 'POST' });
+                showAlert('Request paused successfully');
+                loadRequests();
+            } catch (error) {
+                showAlert('Failed to pause request: ' + error.message, 'error');
+            }
+        }
+        
+        async function resumeRequest(requestId) {
+            try {
+                await fetchAPI(`/request/${requestId}/resume`, { method: 'POST' });
+                showAlert('Request resumed successfully');
+                loadRequests();
+            } catch (error) {
+                showAlert('Failed to resume request: ' + error.message, 'error');
+            }
+        }
+        
+        // Form submission
+        document.getElementById('create-request-form').addEventListener('submit', async (e) => {
+            e.preventDefault();
+            
+            const formData = new FormData(e.target);
+            const data = {
+                buyer_id: formData.get('buyer_id'),
+                target_points: parseInt(formData.get('target_points')),
+                support_card_type: formData.get('support_card_type'),
+                priority: formData.get('priority')
+            };
+            
+            try {
+                const result = await fetchAPI('/request', {
+                    method: 'POST',
+                    body: JSON.stringify(data)
+                });
+                
+                showAlert(`Request created successfully: ${result.request_id}`);
+                e.target.reset();
+                loadRequests();
+                loadQueueStatus();
+            } catch (error) {
+                showAlert('Failed to create request: ' + error.message, 'error');
+            }
+        });
+        
+        // Initial load
+        loadServiceStats();
+        loadQueueStatus();
+        loadRequests();
+        
+        // Auto-refresh every 30 seconds
+        setInterval(() => {
+            loadServiceStats();
+            loadQueueStatus();
+            loadRequests();
+        }, 30000);
+    </script>
+</body>
+</html> 

@@ -35,6 +35,19 @@ except ImportError:
     NGROK_AVAILABLE = False
     print("⚠️ pyngrok not available. Install with: pip install pyngrok")
 
+# Import friend point service
+try:
+    import sys
+    import importlib.util
+    spec = importlib.util.spec_from_file_location("friend_point_service", "games/umamusume-fp/friend_point_service.py")
+    friend_point_service = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(friend_point_service)
+    FriendPointService = friend_point_service.FriendPointService
+    FP_SERVICE_AVAILABLE = True
+except ImportError as e:
+    FP_SERVICE_AVAILABLE = False
+    print(f"⚠️ Friend point service not available: {e}")
+
 
 class WebInterface:
     """Web interface for monitoring automation status"""
@@ -47,6 +60,15 @@ class WebInterface:
         self.automation_engine = automation_engine
         self.device_manager = DeviceManager()
         self.verbose = verbose
+        
+        # Initialize friend point service
+        self.fp_service = None
+        if FP_SERVICE_AVAILABLE:
+            try:
+                self.fp_service = FriendPointService()
+                print("✅ Friend point service initialized")
+            except Exception as e:
+                print(f"❌ Error initializing friend point service: {e}")
         
         # Screenshot cache
         self.screenshot_cache = {}
@@ -81,6 +103,11 @@ class WebInterface:
         def index():
             """Main dashboard page"""
             return render_template('dashboard.html')
+        
+        @self.app.route('/fp')
+        def fp_dashboard():
+            """Friend point service dashboard"""
+            return render_template('fp_dashboard.html')
         
         @self.app.route('/api/stats')
         def get_stats():
@@ -164,8 +191,171 @@ class WebInterface:
                 'ngrok_available': NGROK_AVAILABLE,
                 'public_url': self.public_url,
                 'adb_available': self.device_manager.initialized,
-                'automation_engine_available': self.automation_engine is not None
+                'automation_engine_available': self.automation_engine is not None,
+                'fp_service_available': self.fp_service is not None
             })
+        
+        # Friend Point Service Routes
+        @self.app.route('/api/fp/service/status')
+        def get_fp_service_status():
+            """Get friend point service status"""
+            if not self.fp_service:
+                return jsonify({'error': 'Friend point service not available'}), 400
+            
+            try:
+                queue_status = self.fp_service.get_queue_status()
+                return jsonify(queue_status)
+            except Exception as e:
+                return jsonify({'error': str(e)}), 500
+        
+        @self.app.route('/api/fp/service/requests', methods=['GET'])
+        def get_fp_requests():
+            """Get all friend point requests"""
+            if not self.fp_service:
+                return jsonify({'error': 'Friend point service not available'}), 400
+            
+            try:
+                requests = []
+                for request in self.fp_service.requests.values():
+                    requests.append({
+                        'request_id': request.request_id,
+                        'buyer_id': request.buyer_id,
+                        'target_points': request.target_points,
+                        'support_card_type': request.support_card_type,
+                        'priority': request.priority,
+                        'status': request.status.value,
+                        'points_earned': request.points_earned,
+                        'cycles_completed': request.cycles_completed,
+                        'created_at': request.created_at.isoformat(),
+                        'completed_at': request.completed_at.isoformat() if request.completed_at else None,
+                        'error_message': request.error_message
+                    })
+                
+                return jsonify({'requests': requests})
+            except Exception as e:
+                return jsonify({'error': str(e)}), 500
+        
+        @self.app.route('/api/fp/service/request', methods=['POST'])
+        def create_fp_request():
+            """Create a new friend point request"""
+            if not self.fp_service:
+                return jsonify({'error': 'Friend point service not available'}), 400
+            
+            try:
+                data = request.get_json()
+                buyer_id = data.get('buyer_id')
+                target_points = data.get('target_points')
+                support_card_type = data.get('support_card_type', 'auto')
+                priority = data.get('priority', 'normal')
+                
+                if not buyer_id or not target_points:
+                    return jsonify({'error': 'buyer_id and target_points are required'}), 400
+                
+                request_id = self.fp_service.create_request(
+                    buyer_id=buyer_id,
+                    target_points=target_points,
+                    support_card_type=support_card_type,
+                    priority=priority
+                )
+                
+                return jsonify({
+                    'request_id': request_id,
+                    'status': 'created'
+                })
+            except Exception as e:
+                return jsonify({'error': str(e)}), 500
+        
+        @self.app.route('/api/fp/service/request/<request_id>/start', methods=['POST'])
+        def start_fp_request(request_id):
+            """Start processing a friend point request"""
+            if not self.fp_service:
+                return jsonify({'error': 'Friend point service not available'}), 400
+            
+            try:
+                success = self.fp_service.start_request(request_id)
+                if success:
+                    return jsonify({'status': 'started'})
+                else:
+                    return jsonify({'error': 'Failed to start request'}), 400
+            except Exception as e:
+                return jsonify({'error': str(e)}), 500
+        
+        @self.app.route('/api/fp/service/request/<request_id>/pause', methods=['POST'])
+        def pause_fp_request(request_id):
+            """Pause processing a friend point request"""
+            if not self.fp_service:
+                return jsonify({'error': 'Friend point service not available'}), 400
+            
+            try:
+                success = self.fp_service.pause_request(request_id)
+                if success:
+                    return jsonify({'status': 'paused'})
+                else:
+                    return jsonify({'error': 'Failed to pause request'}), 400
+            except Exception as e:
+                return jsonify({'error': str(e)}), 500
+        
+        @self.app.route('/api/fp/service/request/<request_id>/resume', methods=['POST'])
+        def resume_fp_request(request_id):
+            """Resume processing a friend point request"""
+            if not self.fp_service:
+                return jsonify({'error': 'Friend point service not available'}), 400
+            
+            try:
+                success = self.fp_service.resume_request(request_id)
+                if success:
+                    return jsonify({'status': 'resumed'})
+                else:
+                    return jsonify({'error': 'Failed to resume request'}), 400
+            except Exception as e:
+                return jsonify({'error': str(e)}), 500
+        
+        @self.app.route('/api/fp/service/request/<request_id>', methods=['GET'])
+        def get_fp_request(request_id):
+            """Get a specific friend point request"""
+            if not self.fp_service:
+                return jsonify({'error': 'Friend point service not available'}), 400
+            
+            try:
+                request = self.fp_service.get_request(request_id)
+                if request:
+                    return jsonify({
+                        'request_id': request.request_id,
+                        'buyer_id': request.buyer_id,
+                        'target_points': request.target_points,
+                        'support_card_type': request.support_card_type,
+                        'priority': request.priority,
+                        'status': request.status.value,
+                        'points_earned': request.points_earned,
+                        'cycles_completed': request.cycles_completed,
+                        'created_at': request.created_at.isoformat(),
+                        'completed_at': request.completed_at.isoformat() if request.completed_at else None,
+                        'error_message': request.error_message
+                    })
+                else:
+                    return jsonify({'error': 'Request not found'}), 404
+            except Exception as e:
+                return jsonify({'error': str(e)}), 500
+        
+        @self.app.route('/api/fp/service/stats')
+        def get_fp_stats():
+            """Get friend point service statistics"""
+            if not self.fp_service:
+                return jsonify({'error': 'Friend point service not available'}), 400
+            
+            try:
+                stats = self.fp_service.get_service_stats()
+                return jsonify({
+                    'total_requests': stats.total_requests,
+                    'completed_requests': stats.completed_requests,
+                    'failed_requests': stats.failed_requests,
+                    'total_points_earned': stats.total_points_earned,
+                    'average_points_per_request': stats.average_points_per_request,
+                    'total_runtime_hours': stats.total_runtime_hours,
+                    'last_updated': stats.last_updated.isoformat()
+                })
+            except Exception as e:
+                return jsonify({'error': str(e)}), 500
     
     def get_device_screenshot(self, device_id: str) -> Optional[Dict[str, Any]]:
         """Get screenshot for a specific device"""

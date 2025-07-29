@@ -146,4 +146,38 @@ class DeviceManager:
             return None
         except Exception as e:
             print(f"❌ Error getting clipboard from {device_id}: {e}")
-            return None 
+            return None
+    
+    def tap(self, device_id: str, x: int, y: int) -> bool:
+        """Tap at specific coordinates on device"""
+        result = self.execute_adb_command(
+            device_id, 
+            ['shell', 'input', 'tap', str(x), str(y)]
+        )
+        return result is not None and result.returncode == 0
+    
+    def swipe(self, device_id: str, start_x: int, start_y: int, end_x: int, end_y: int, duration: int = 1000) -> bool:
+        """Swipe from start to end coordinates on device"""
+        result = self.execute_adb_command(
+            device_id,
+            ['shell', 'input', 'swipe', str(start_x), str(start_y), str(end_x), str(end_y), str(duration)]
+        )
+        return result is not None and result.returncode == 0
+    
+    def input_text(self, device_id: str, text: str) -> bool:
+        """Input text on device"""
+        # Escape special characters for shell
+        escaped_text = text.replace('"', '\\"').replace('$', '\\$').replace('`', '\\`')
+        result = self.execute_adb_command(
+            device_id,
+            ['shell', 'input', 'text', f'"{escaped_text}"']
+        )
+        return result is not None and result.returncode == 0
+    
+    def send_key(self, device_id: str, keycode: str) -> bool:
+        """Send a keycode to device"""
+        result = self.execute_adb_command(
+            device_id,
+            ['shell', 'input', 'keyevent', keycode]
+        )
+        return result is not None and result.returncode == 0 

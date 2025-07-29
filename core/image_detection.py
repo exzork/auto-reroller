@@ -5,7 +5,7 @@ Image Detection and Processing for automation
 import cv2
 import numpy as np
 import os
-from typing import Optional, Tuple, List
+from typing import Optional, Tuple, List, Dict
 from pathlib import Path
 
 
@@ -14,6 +14,8 @@ class ImageDetector:
     
     def __init__(self):
         self.project_root = Path(__file__).parent.parent
+        # Store detected template coordinates
+        self.detected_coordinates = {}
     
     def detect_template(self, screenshot: np.ndarray, template_path: str, 
                        threshold: float = 0.8) -> bool:
@@ -29,7 +31,20 @@ class ImageDetector:
             result = cv2.matchTemplate(screenshot, template, cv2.TM_CCOEFF_NORMED)
             min_val, max_val, min_loc, max_loc = cv2.minMaxLoc(result)
             
-            return max_val >= threshold
+            if max_val >= threshold:
+                # Save center coordinates of detected template
+                h, w = template.shape[:2]
+                center_x = max_loc[0] + w // 2
+                center_y = max_loc[1] + h // 2
+                
+                # Store coordinates with template name as key
+                template_name = Path(template_path).stem
+                self.detected_coordinates[template_name] = (center_x, center_y)
+                
+                print(f"✅ Template '{template_name}' detected at center coordinates: ({center_x}, {center_y})")
+                return True
+            
+            return False
         except Exception as e:
             print(f"❌ Error in template detection: {e}")
             return False
@@ -47,12 +62,30 @@ class ImageDetector:
             
             if max_val >= threshold:
                 h, w = template.shape[:2]
+                # Save center coordinates
+                center_x = max_loc[0] + w // 2
+                center_y = max_loc[1] + h // 2
+                template_name = Path(template_path).stem
+                self.detected_coordinates[template_name] = (center_x, center_y)
+                
                 return (max_loc[0], max_loc[1], w, h)
             
             return None
         except Exception as e:
             print(f"❌ Error in template location detection: {e}")
             return None
+    
+    def get_detected_coordinates(self, template_name: str) -> Optional[Tuple[int, int]]:
+        """Get saved center coordinates for a detected template"""
+        return self.detected_coordinates.get(template_name)
+    
+    def clear_detected_coordinates(self):
+        """Clear all saved coordinates"""
+        self.detected_coordinates.clear()
+    
+    def get_all_detected_coordinates(self) -> Dict[str, Tuple[int, int]]:
+        """Get all saved coordinates"""
+        return self.detected_coordinates.copy()
     
     def crop_image_region(self, image: np.ndarray, x: int, y: int, 
                          width: int, height: int) -> Optional[np.ndarray]:

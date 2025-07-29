@@ -1,0 +1,150 @@
+{
+    "display_name": "Uma Musume Friend Point Spam",
+    "app_package": "com.cygames.umamusume",
+    "app_activity": "com.cygames.umamusume/jp.co.cygames.umamusume_activity.UmamusumeActivity",
+    "cycles_per_session": 50,
+    "minimum_score_threshold": 25,
+    "default_item_score": 5,
+    "discord_webhook_url": "",
+    "device_resolution": [1080, 2400],
+    "support_points_region": [400, 805, 435, 830],
+    "friend_list_region": [50, 200, 650, 1200],
+    "support_card_region": [100, 300, 600, 800],
+    "card_scoring": {
+        "ssr_support": 100,
+        "sr_support": 50,
+        "r_support": 25,
+        "friend_point": 10,
+        "support_point": 5,
+        "point_multiplier": 1
+    },
+    "detection_regions": {
+        "support_card_1": [0.2, 0.3, 0.4, 0.5],
+        "support_card_2": [0.4, 0.3, 0.6, 0.5],
+        "support_card_3": [0.6, 0.3, 0.8, 0.5],
+        "support_card_4": [0.2, 0.5, 0.4, 0.7],
+        "support_card_5": [0.4, 0.5, 0.6, 0.7],
+        "support_card_6": [0.6, 0.5, 0.8, 0.7]
+    },
+    "template_thresholds": {
+        "main_menu": 0.6,
+        "home_screen": 0.8,
+        "friend_list": 0.8,
+        "friends_tab": 0.8,
+        "friend_profile": 0.8,
+        "support_card_screen": 0.8,
+        "support_result": 0.8,
+        "points_gained": 0.8,
+        "support_card": 0.7
+    },
+    "automation_states": {
+        "waiting_for_main_menu": {
+            "timeout": 30,
+            "templates": ["main_menu", "home_screen"],
+            "actions": [],
+            "next_states": ["navigating_to_friends"]
+        },
+        "navigating_to_friends": {
+            "timeout": 20,
+            "templates": [],
+            "actions": [
+                {
+                    "type": "macro",
+                    "name": "navigate_to_friends"
+                }
+            ],
+            "next_states": ["waiting_for_friend_list"]
+        },
+        "waiting_for_friend_list": {
+            "timeout": 30,
+            "templates": ["friend_list", "friends_tab"],
+            "actions": [],
+            "next_states": ["selecting_friend"]
+        },
+        "selecting_friend": {
+            "timeout": 15,
+            "templates": [],
+            "actions": [
+                {
+                    "type": "macro",
+                    "name": "select_first_friend"
+                }
+            ],
+            "next_states": ["waiting_for_friend_profile"]
+        },
+        "waiting_for_friend_profile": {
+            "timeout": 20,
+            "templates": ["friend_profile", "support_card_screen"],
+            "actions": [],
+            "next_states": ["using_support_card"]
+        },
+        "using_support_card": {
+            "timeout": 15,
+            "templates": [],
+            "actions": [
+                {
+                    "type": "macro",
+                    "name": "use_support_card"
+                }
+            ],
+            "next_states": ["waiting_for_support_result"]
+        },
+        "waiting_for_support_result": {
+            "timeout": 25,
+            "templates": ["support_result", "points_gained"],
+            "actions": [],
+            "processes_items": true,
+            "next_states": ["collecting_support_points"]
+        },
+        "collecting_support_points": {
+            "timeout": 10,
+            "templates": [],
+            "actions": [
+                {
+                    "type": "macro",
+                    "name": "collect_support_points"
+                }
+            ],
+            "next_states": ["returning_to_friend_list"]
+        },
+        "tap_example": {
+            "timeout": 15,
+            "templates": ["support_result"],
+            "actions": [
+                {
+                    "type": "tap",
+                    "template": "support_result"
+                }
+            ],
+            "next_states": ["returning_to_friend_list"]
+        },
+        "returning_to_friend_list": {
+            "timeout": 15,
+            "templates": [],
+            "actions": [
+                {
+                    "type": "macro",
+                    "name": "return_to_friend_list"
+                }
+            ],
+            "next_states": ["waiting_for_friend_list"]
+        },
+        "session_complete": {
+            "timeout": 5,
+            "templates": [],
+            "actions": [],
+            "next_states": []
+        }
+    },
+    "service_config": {
+        "max_friends_per_session": 50,
+        "friend_point_target": 1000,
+        "support_card_priority": ["ssr", "sr", "r"],
+        "auto_restart_on_completion": true,
+        "notification_settings": {
+            "notify_on_ssr_support": true,
+            "notify_on_high_points": true,
+            "high_points_threshold": 100
+        }
+    }
+} 
