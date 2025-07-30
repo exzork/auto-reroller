@@ -535,20 +535,10 @@ class AutomationInstance:
                 if condition_likelihood:
                     print(f"   🎯 Condition likelihood: {condition_likelihood}")
                 if use_single_screenshot:
-                    print(f"   📸 Using single screenshot for entire loop")
+                    print(f"   📸 Using single screenshot per iteration")
             
             iteration = 0
             start_time = time.time()
-            
-            # Take single screenshot if requested
-            loop_screenshot = None
-            if use_single_screenshot:
-                if self.verbose:
-                    print(f"   📸 Instance #{self.instance_number}: Taking single screenshot for loop")
-                loop_screenshot = self.get_screenshot()
-                if loop_screenshot is None:
-                    print(f"❌ Instance #{self.instance_number}: Failed to get screenshot for loop")
-                    return False
             
             while True:
                 # Check max iterations
@@ -567,6 +557,16 @@ class AutomationInstance:
                     elapsed = time.time() - start_time
                     remaining = timeout - elapsed
                     print(f"   ⏱️ Instance #{self.instance_number}: Loop timeout check - {elapsed:.1f}s elapsed, {remaining:.1f}s remaining")
+                
+                # Take screenshot for this iteration if using single screenshot mode
+                loop_screenshot = None
+                if use_single_screenshot:
+                    if self.verbose:
+                        print(f"   📸 Instance #{self.instance_number}: Taking screenshot for iteration {iteration + 1}")
+                    loop_screenshot = self.get_screenshot()
+                    if loop_screenshot is None:
+                        print(f"❌ Instance #{self.instance_number}: Failed to get screenshot for loop iteration {iteration + 1}")
+                        return False
                 
                 # Check exit condition
                 if condition:

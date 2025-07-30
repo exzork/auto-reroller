@@ -82,7 +82,7 @@ class UmamusumeFpGame(BaseGame):
         """Define Uma Musume Friend Point automation states"""
         return {
             "waiting_for_main_menu": {
-                "timeout": 120,
+                "timeout": 180,
                 "templates": [],
                 "actions": [
                     create_tap_action(
@@ -534,26 +534,26 @@ class UmamusumeFpGame(BaseGame):
                         template="race 3",
                         likelihood=0.9,
                         delay_after=1.0,
-                        timeout=10
+                        timeout=20
                     ),
                     create_loop_action(
                         actions=[
                             create_tap_action(
                                 template="skip sm",
                                 likelihood=0.9,
-                                delay_after=5.0,
+                                delay_after=1.0,
                                 timeout=0.5
                             ),
                             create_tap_action(
                                 template="concert menu",
                                 likelihood=0.9,
-                                delay_after=5.0,
+                                delay_after=1.0,
                                 timeout=0.5
                             ),
                             create_tap_action(
                                 template="close",
                                 likelihood=0.9,
-                                delay_after=5.0,
+                                delay_after=1.0,
                                 timeout=0.5
                             )
                         ],
