@@ -41,6 +41,9 @@ class AutomationInstance:
         self.current_state_start_time = time.time()
         self.timeout_thread = None
         
+        # Action tracking within states
+        self.current_action_index = 0
+        
         if self.verbose:
             print(f"🔍 Instance #{instance_number}: Detailed initialization for device: {device_id}")
             print(f"   Game: {game.get_display_name()}")
@@ -98,14 +101,18 @@ class AutomationInstance:
         return False
     
     def change_state(self, new_state: str):
-        """Change automation state and update timing"""
-        if new_state != self.instance_data['current_state']:
-            old_state = self.instance_data['current_state']
-            self.instance_data['current_state'] = new_state
-            self.current_state_start_time = time.time()
-            
-            if self.verbose:
-                print(f"🔄 Instance #{self.instance_number}: State transition: {old_state} → {new_state}")
+        """Change to a new automation state"""
+        old_state = self.instance_data['current_state']
+        self.instance_data['current_state'] = new_state
+        self.current_state_start_time = time.time()
+        
+        # Reset action index when changing states
+        self.current_action_index = 0
+        
+        if self.verbose:
+            print(f"🔄 Instance #{self.instance_number}: State transition: {old_state} → {new_state}")
+        else:
+            print(f"🔄 Instance #{self.instance_number}: {old_state} → {new_state}")
     
     def handle_timeout(self) -> bool:
         """Handle timeout by restarting app and resetting state"""
@@ -126,6 +133,8 @@ class AutomationInstance:
                 # Force reset timeout timer (fix for bug where timeout doesn't reset after app restart)
                 self.current_state_start_time = time.time()
                 
+                # Reset action index and other instance data
+                self.current_action_index = 0
                 self.instance_data['cycle_count'] = 0
                 self.instance_data['detected_items'] = []
                 self.instance_data['account_id'] = None
@@ -185,7 +194,11 @@ class AutomationInstance:
             if self.verbose:
                 print(f"🔍 Instance #{self.instance_number}: No saved coordinates for template '{template_name}', scanning screenshot...")
             
-            screenshot = self.get_screenshot()
+            # Use stored screenshot if available (for single screenshot loops)
+            screenshot = getattr(self, '_current_screenshot', None)
+            if screenshot is None:
+                screenshot = self.get_screenshot()
+            
             if screenshot is None:
                 if self.verbose:
                     print(f"❌ Instance #{self.instance_number}: Failed to get screenshot for template detection")
@@ -253,6 +266,7 @@ class AutomationInstance:
             delay_before = action_config.get('delay_before')
             delay_after = action_config.get('delay_after')
             likelihood = action_config.get('likelihood')
+            timeout = action_config.get('timeout')
             
             if self.verbose:
                 print(f"👆 Instance #{self.instance_number}: Executing tap action")
@@ -265,16 +279,40 @@ class AutomationInstance:
                     print(f"   ⏱️ Delay after: {delay_after}s")
                 if likelihood:
                     print(f"   🎯 Likelihood: {likelihood}")
+                if timeout:
+                    print(f"   ⏱️ Timeout: {timeout}s")
             
             # Apply delays if specified
             if delay_before:
                 time.sleep(delay_before)
             
-            # Execute tap with custom likelihood if specified
-            if likelihood is not None:
-                success = self.execute_tap_with_likelihood(template_name, likelihood)
+            # Execute tap with timeout handling
+            if timeout is not None:
+                # Try to execute tap with timeout
+                tap_start_time = time.time()
+                while time.time() - tap_start_time < timeout:
+                    # Execute tap with custom likelihood if specified
+                    if likelihood is not None:
+                        success = self.execute_tap_with_likelihood(template_name, likelihood)
+                    else:
+                        success = self.execute_tap(template_name)
+                    
+                    if success:
+                        break
+                    
+                    # Brief pause before retry
+                    time.sleep(0.5)
+                else:
+                    # Tap timeout reached, log and continue (don't fail the action)
+                    if self.verbose:
+                        print(f"⏱️ Instance #{self.instance_number}: Tap action '{template_name}' timed out after {timeout}s, continuing to next action")
+                    success = True  # Return True to continue to next action
             else:
-                success = self.execute_tap(template_name)
+                # Execute tap without timeout (original behavior)
+                if likelihood is not None:
+                    success = self.execute_tap_with_likelihood(template_name, likelihood)
+                else:
+                    success = self.execute_tap(template_name)
             
             if delay_after:
                 time.sleep(delay_after)
@@ -483,6 +521,7 @@ class AutomationInstance:
             condition = action_config.get('condition')
             timeout = action_config.get('timeout')
             condition_likelihood = action_config.get('condition_likelihood')
+            use_single_screenshot = action_config.get('use_single_screenshot', False)
             
             if self.verbose:
                 print(f"🔄 Instance #{self.instance_number}: Executing loop action")
@@ -495,9 +534,21 @@ class AutomationInstance:
                     print(f"   ⏱️ Timeout: {timeout}s")
                 if condition_likelihood:
                     print(f"   🎯 Condition likelihood: {condition_likelihood}")
+                if use_single_screenshot:
+                    print(f"   📸 Using single screenshot for entire loop")
             
             iteration = 0
             start_time = time.time()
+            
+            # Take single screenshot if requested
+            loop_screenshot = None
+            if use_single_screenshot:
+                if self.verbose:
+                    print(f"   📸 Instance #{self.instance_number}: Taking single screenshot for loop")
+                loop_screenshot = self.get_screenshot()
+                if loop_screenshot is None:
+                    print(f"❌ Instance #{self.instance_number}: Failed to get screenshot for loop")
+                    return False
             
             while True:
                 # Check max iterations
@@ -509,31 +560,69 @@ class AutomationInstance:
                 # Check timeout
                 if timeout and time.time() - start_time > timeout:
                     if self.verbose:
-                        print(f"   ⏱️ Instance #{self.instance_number}: Loop timeout reached ({timeout}s)")
+                        print(f"   ⏱️ Instance #{self.instance_number}: Loop timeout reached ({timeout}s), exiting loop")
                     break
+                elif timeout and self.verbose:
+                    # Debug logging to show timeout progress
+                    elapsed = time.time() - start_time
+                    remaining = timeout - elapsed
+                    print(f"   ⏱️ Instance #{self.instance_number}: Loop timeout check - {elapsed:.1f}s elapsed, {remaining:.1f}s remaining")
                 
                 # Check exit condition
                 if condition:
-                    screenshot = self.get_screenshot()
-                    if screenshot is not None:
+                    # Use loop screenshot if available, otherwise get new screenshot
+                    check_screenshot = loop_screenshot if use_single_screenshot else self.get_screenshot()
+                    if check_screenshot is not None:
                         if condition_likelihood is not None:
-                            exit_condition_met = self.detect_template_with_likelihood(screenshot, condition, condition_likelihood)
+                            exit_condition_met = self.detect_template_with_likelihood(check_screenshot, condition, condition_likelihood)
                         else:
-                            exit_condition_met = self.detect_template(screenshot, condition)
+                            exit_condition_met = self.detect_template(check_screenshot, condition)
                         
                         if exit_condition_met:
                             if self.verbose:
                                 print(f"   ✅ Instance #{self.instance_number}: Exit condition '{condition}' met")
                             break
+                        elif self.verbose:
+                            print(f"   🔍 Instance #{self.instance_number}: Exit condition '{condition}' not met, continuing loop")
+                    elif self.verbose:
+                        print(f"   ❌ Instance #{self.instance_number}: Failed to get screenshot for exit condition check")
                 
                 # Execute loop actions
                 if self.verbose:
                     print(f"   🔄 Instance #{self.instance_number}: Loop iteration {iteration + 1}")
                 
                 for action in actions:
-                    if not self.execute_action(action):
-                        print(f"❌ Instance #{self.instance_number}: Failed to execute action in loop iteration {iteration + 1}")
-                        return False
+                    # Check timeout before each action
+                    if timeout and time.time() - start_time > timeout:
+                        if self.verbose:
+                            print(f"   ⏱️ Instance #{self.instance_number}: Loop timeout reached ({timeout}s) during action execution, exiting loop")
+                        break  # Break out of the action loop and then the main loop
+                    
+                    # Execute action with single screenshot if requested
+                    if use_single_screenshot and loop_screenshot is not None:
+                        # Temporarily store the loop screenshot for this action execution
+                        original_screenshot = getattr(self, '_current_screenshot', None)
+                        self._current_screenshot = loop_screenshot
+                        
+                        try:
+                            if not self.execute_action(action):
+                                print(f"❌ Instance #{self.instance_number}: Failed to execute action in loop iteration {iteration + 1}")
+                                return False
+                        finally:
+                            # Restore original screenshot behavior
+                            if original_screenshot is not None:
+                                self._current_screenshot = original_screenshot
+                            else:
+                                delattr(self, '_current_screenshot')
+                    else:
+                        # Normal action execution
+                        if not self.execute_action(action):
+                            print(f"❌ Instance #{self.instance_number}: Failed to execute action in loop iteration {iteration + 1}")
+                            return False
+                
+                # Check if we broke out of the action loop due to timeout
+                if timeout and time.time() - start_time > timeout:
+                    break  # Exit the main loop as well
                 
                 iteration += 1
             
@@ -583,7 +672,11 @@ class AutomationInstance:
     
     def execute_tap_with_likelihood(self, template_name: str, likelihood: float) -> bool:
         """Execute a tap at the saved coordinates for a detected template with custom likelihood"""
-        screenshot = self.get_screenshot()
+        # Use stored screenshot if available (for single screenshot loops)
+        screenshot = getattr(self, '_current_screenshot', None)
+        if screenshot is None:
+            screenshot = self.get_screenshot()
+        
         if screenshot is None:
             print(f"❌ Instance #{self.instance_number}: Failed to get screenshot for tap")
             return False
@@ -748,67 +841,134 @@ class AutomationInstance:
                     # Execute actions for this state
                     action_success = True
                     
-                    # Handle new action system
-                    if actions:
-                        if self.verbose:
-                            print(f"🎬 Instance #{self.instance_number}: Executing {len(actions)} action(s)")
-                        
-                        for action in actions:
-                            if not self.execute_action(action):
-                                action_success = False
-                                break
-                            
-                            # Process items if this is a cycle where items are obtained
-                            if state_config.get('processes_items', False):
-                                if self.verbose:
-                                    print(f"🎁 Instance #{self.instance_number}: Processing items after action")
-                                
-                                time.sleep(2 * self.macro_executor.speed_multiplier)  # Wait for items to appear (respects speed)
-                                new_screenshot = self.get_screenshot()
-                                if new_screenshot is not None and self.is_new_cycle(new_screenshot):
-                                    # Increment cycle count regardless of item detection
-                                    self.instance_data['cycle_count'] += 1
-                                    
-                                    # Try to detect items
-                                    detected_items = self.process_screenshot_for_items(new_screenshot)
-                                    if detected_items:
-                                        self.instance_data['detected_items'].extend(detected_items)
-                                        if self.verbose:
-                                            print(f"🎁 Instance #{self.instance_number}: Cycle {self.instance_data['cycle_count']} complete, {len(detected_items)} items added")
-                                    else:
-                                        if self.verbose:
-                                            print(f"🎁 Instance #{self.instance_number}: Cycle {self.instance_data['cycle_count']} complete, no items detected")
+                    # Handle if condition logic
+                    if_condition = state_config.get('if_condition')
+                    if_true_actions = state_config.get('if_true_actions', [])
+                    if_false_actions = state_config.get('if_false_actions', [])
+                    if_likelihood = state_config.get('if_likelihood')
                     
-                    # Handle legacy macro system
-                    elif macros:
+                    if if_condition:
                         if self.verbose:
-                            print(f"🎬 Instance #{self.instance_number}: Executing {len(macros)} macro(s): {macros}")
+                            print(f"🔀 Instance #{self.instance_number}: Checking if condition: {if_condition}")
                         
-                        for macro in macros:
-                            if not self.execute_macro(macro):
+                        # Check if condition
+                        condition_met = False
+                        if screenshot is not None:
+                            if if_likelihood is not None:
+                                condition_met = self.detect_template_with_likelihood(screenshot, if_condition, if_likelihood)
+                            else:
+                                condition_met = self.detect_template(screenshot, if_condition)
+                        
+                        if self.verbose:
+                            print(f"   {'✅' if condition_met else '❌'} If condition '{if_condition}' {'met' if condition_met else 'not met'}")
+                        
+                        # Execute appropriate actions based on condition
+                        actions_to_execute = if_true_actions if condition_met else if_false_actions
+                        if self.verbose:
+                            print(f"   🎬 Executing {len(actions_to_execute)} action(s) for {'true' if condition_met else 'false'} branch")
+                        
+                        # Execute conditional actions
+                        for i, action in enumerate(actions_to_execute):
+                            if self.verbose:
+                                print(f"🎬 Instance #{self.instance_number}: Executing conditional action {i + 1}/{len(actions_to_execute)}")
+                            
+                            if not self.execute_action(action):
+                                if self.verbose:
+                                    print(f"❌ Instance #{self.instance_number}: Conditional action {i + 1} failed")
                                 action_success = False
                                 break
+                    else:
+                        # Handle regular actions (existing logic)
+                        if actions:
+                            if self.verbose:
+                                print(f"🎬 Instance #{self.instance_number}: Executing {len(actions)} action(s) starting from index {self.current_action_index}")
                             
-                            # Process items if this is a cycle where items are obtained
-                            if state_config.get('processes_items', False):
+                            # Execute actions starting from the current index
+                            for i in range(self.current_action_index, len(actions)):
+                                action = actions[i]
                                 if self.verbose:
-                                    print(f"🎁 Instance #{self.instance_number}: Processing items after macro '{macro}'")
+                                    print(f"🎬 Instance #{self.instance_number}: Executing action {i + 1}/{len(actions)}")
                                 
-                                time.sleep(2 * self.macro_executor.speed_multiplier)  # Wait for items to appear (respects speed)
-                                new_screenshot = self.get_screenshot()
-                                if new_screenshot is not None and self.is_new_cycle(new_screenshot):
-                                    # Increment cycle count regardless of item detection
-                                    self.instance_data['cycle_count'] += 1
+                                if not self.execute_action(action):
+                                    # Action failed, stay at current index for next iteration
+                                    if self.verbose:
+                                        print(f"❌ Instance #{self.instance_number}: Action {i + 1} failed, will retry from this action")
+                                    action_success = False
+                                    break
+                                else:
+                                    # Action succeeded, move to next action
+                                    self.current_action_index = i + 1
+                                
+                                # Process items if this is a cycle where items are obtained
+                                if state_config.get('processes_items', False):
+                                    if self.verbose:
+                                        print(f"🎁 Instance #{self.instance_number}: Processing items after action")
                                     
-                                    # Try to detect items
-                                    detected_items = self.process_screenshot_for_items(new_screenshot)
-                                    if detected_items:
-                                        self.instance_data['detected_items'].extend(detected_items)
-                                        if self.verbose:
-                                            print(f"🎁 Instance #{self.instance_number}: Cycle {self.instance_data['cycle_count']} complete, {len(detected_items)} items added")
-                                    else:
-                                        if self.verbose:
-                                            print(f"🎁 Instance #{self.instance_number}: Cycle {self.instance_data['cycle_count']} complete, no items detected")
+                                    time.sleep(2 * self.macro_executor.speed_multiplier)  # Wait for items to appear (respects speed)
+                                    new_screenshot = self.get_screenshot()
+                                    if new_screenshot is not None and self.is_new_cycle(new_screenshot):
+                                        # Increment cycle count regardless of item detection
+                                        self.instance_data['cycle_count'] += 1
+                                        
+                                        # Try to detect items
+                                        detected_items = self.process_screenshot_for_items(new_screenshot)
+                                        if detected_items:
+                                            self.instance_data['detected_items'].extend(detected_items)
+                                            if self.verbose:
+                                                print(f"🎁 Instance #{self.instance_number}: Cycle {self.instance_data['cycle_count']} complete, {len(detected_items)} items added")
+                                        else:
+                                            if self.verbose:
+                                                print(f"🎁 Instance #{self.instance_number}: Cycle {self.instance_data['cycle_count']} complete, no items detected")
+                            
+                            # If all actions completed successfully, reset action index
+                            if action_success:
+                                self.current_action_index = 0
+                        
+                        # Handle legacy macro system
+                        elif macros:
+                            if self.verbose:
+                                print(f"🎬 Instance #{self.instance_number}: Executing {len(macros)} macro(s) starting from index {self.current_action_index}: {macros}")
+                            
+                            # Execute macros starting from the current index
+                            for i in range(self.current_action_index, len(macros)):
+                                macro = macros[i]
+                                if self.verbose:
+                                    print(f"🎬 Instance #{self.instance_number}: Executing macro {i + 1}/{len(macros)}: {macro}")
+                                
+                                if not self.execute_macro(macro):
+                                    # Macro failed, stay at current index for next iteration
+                                    if self.verbose:
+                                        print(f"❌ Instance #{self.instance_number}: Macro {i + 1} '{macro}' failed, will retry from this macro")
+                                    action_success = False
+                                    break
+                                else:
+                                    # Macro succeeded, move to next macro
+                                    self.current_action_index = i + 1
+                                
+                                # Process items if this is a cycle where items are obtained
+                                if state_config.get('processes_items', False):
+                                    if self.verbose:
+                                        print(f"🎁 Instance #{self.instance_number}: Processing items after macro '{macro}'")
+                                    
+                                    time.sleep(2 * self.macro_executor.speed_multiplier)  # Wait for items to appear (respects speed)
+                                    new_screenshot = self.get_screenshot()
+                                    if new_screenshot is not None and self.is_new_cycle(new_screenshot):
+                                        # Increment cycle count regardless of item detection
+                                        self.instance_data['cycle_count'] += 1
+                                        
+                                        # Try to detect items
+                                        detected_items = self.process_screenshot_for_items(new_screenshot)
+                                        if detected_items:
+                                            self.instance_data['detected_items'].extend(detected_items)
+                                            if self.verbose:
+                                                print(f"🎁 Instance #{self.instance_number}: Cycle {self.instance_data['cycle_count']} complete, {len(detected_items)} items added")
+                                        else:
+                                            if self.verbose:
+                                                print(f"🎁 Instance #{self.instance_number}: Cycle {self.instance_data['cycle_count']} complete, no items detected")
+                            
+                            # If all macros completed successfully, reset action index
+                            if action_success:
+                                self.current_action_index = 0
                     
                     # Transition to next state
                     if action_success:
@@ -911,6 +1071,7 @@ class AutomationInstance:
         self.instance_data['cycle_count'] = 0
         self.instance_data['detected_items'] = []
         self.instance_data['account_id'] = None
+        self.current_action_index = 0
         self.change_state(self.game.get_initial_state())
         
         if self.verbose:

@@ -35,6 +35,7 @@ class TapAction(TypedDict):
     delay_before: Optional[float]
     delay_after: Optional[float]
     likelihood: Optional[float]  # Custom detection threshold (0.0-1.0)
+    timeout: Optional[float]  # Timeout in seconds before skipping to next action (None = forever)
 
 
 class SwipeAction(TypedDict):
@@ -94,6 +95,7 @@ class LoopAction(TypedDict):
     condition: Optional[str]  # template to check for loop exit
     timeout: Optional[float]
     condition_likelihood: Optional[float]  # Custom detection threshold for condition template
+    use_single_screenshot: Optional[bool]  # Use one screenshot for entire loop instead of per action
 
 
 # Union type for all action configurations
@@ -118,6 +120,10 @@ class StateConfig(TypedDict):
     processes_items: Optional[bool]
     next_states: List[str]
     description: Optional[str]
+    if_condition: Optional[str]  # Template to check for conditional execution
+    if_true_actions: Optional[List[ActionConfig]]  # Actions to execute if condition is met
+    if_false_actions: Optional[List[ActionConfig]]  # Actions to execute if condition is not met
+    if_likelihood: Optional[float]  # Custom detection threshold for if condition
 
 
 class AutomationStates(TypedDict):
@@ -138,7 +144,7 @@ def create_macro_action(name: str, timeout: Optional[int] = None, speed_multipli
 
 def create_tap_action(template: str, coordinates: Optional[tuple[int, int]] = None, 
                      delay_before: Optional[float] = None, delay_after: Optional[float] = None,
-                     likelihood: Optional[float] = None) -> TapAction:
+                     likelihood: Optional[float] = None, timeout: Optional[float] = None) -> TapAction:
     """Create a tap action"""
     return {
         "type": "tap",
@@ -146,7 +152,8 @@ def create_tap_action(template: str, coordinates: Optional[tuple[int, int]] = No
         "coordinates": coordinates,
         "delay_before": delay_before,
         "delay_after": delay_after,
-        "likelihood": likelihood
+        "likelihood": likelihood,
+        "timeout": timeout
     }
 
 
@@ -219,7 +226,7 @@ def create_conditional_action(condition: str, if_true: List[ActionConfig],
 
 def create_loop_action(actions: List[ActionConfig], max_iterations: Optional[int] = None,
                       condition: Optional[str] = None, timeout: Optional[float] = None,
-                      condition_likelihood: Optional[float] = None) -> LoopAction:
+                      condition_likelihood: Optional[float] = None, use_single_screenshot: Optional[bool] = None) -> LoopAction:
     """Create a loop action"""
     return {
         "type": "loop",
@@ -227,7 +234,43 @@ def create_loop_action(actions: List[ActionConfig], max_iterations: Optional[int
         "max_iterations": max_iterations,
         "condition": condition,
         "timeout": timeout,
-        "condition_likelihood": condition_likelihood
+        "condition_likelihood": condition_likelihood,
+        "use_single_screenshot": use_single_screenshot
+    }
+
+
+def create_loop_action_with_single_screenshot(actions: List[ActionConfig], max_iterations: Optional[int] = None,
+                                            condition: Optional[str] = None, timeout: Optional[float] = None,
+                                            condition_likelihood: Optional[float] = None) -> LoopAction:
+    """Create a loop action that uses a single screenshot for the entire loop"""
+    return create_loop_action(
+        actions=actions,
+        max_iterations=max_iterations,
+        condition=condition,
+        timeout=timeout,
+        condition_likelihood=condition_likelihood,
+        use_single_screenshot=True
+    )
+
+
+def create_state_with_if_condition(timeout: int, templates: List[str], next_states: List[str],
+                                 if_condition: str, if_true_actions: List[ActionConfig], 
+                                 if_false_actions: Optional[List[ActionConfig]] = None,
+                                 if_likelihood: Optional[float] = None,
+                                 processes_items: Optional[bool] = None,
+                                 description: Optional[str] = None) -> StateConfig:
+    """Create a state configuration with if condition"""
+    return {
+        "timeout": timeout,
+        "templates": templates,
+        "actions": [],  # Empty since we're using conditional actions
+        "next_states": next_states,
+        "if_condition": if_condition,
+        "if_true_actions": if_true_actions,
+        "if_false_actions": if_false_actions or [],
+        "if_likelihood": if_likelihood,
+        "processes_items": processes_items,
+        "description": description
     }
 
 
@@ -280,6 +323,11 @@ def validate_action_config(action: Dict[str, Any]) -> List[str]:
         if likelihood is not None:
             if not isinstance(likelihood, (int, float)) or likelihood < 0.0 or likelihood > 1.0:
                 errors.append("Tap action likelihood must be a number between 0.0 and 1.0")
+        # Validate timeout if provided
+        timeout = action.get("timeout")
+        if timeout is not None:
+            if not isinstance(timeout, (int, float)) or timeout <= 0.0:
+                errors.append("Tap action timeout must be a positive number")
     
     elif action_type == "swipe":
         if not action.get("start_template") and not action.get("start_coordinates"):

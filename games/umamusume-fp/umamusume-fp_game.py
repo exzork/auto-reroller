@@ -11,7 +11,7 @@ from typing import Dict, Any, List, Tuple, Optional
 from pathlib import Path
 from games.base_game import BaseGame
 from core.action_types import (
-    create_macro_action, create_tap_action, create_wait_action, create_typing_action,
+    create_loop_action, create_macro_action, create_tap_action, create_wait_action, create_typing_action,
     ActionConfig, StateConfig
 )
 
@@ -82,9 +82,183 @@ class UmamusumeFpGame(BaseGame):
         """Define Uma Musume Friend Point automation states"""
         return {
             "waiting_for_main_menu": {
-                "timeout": 90,
-                "templates": ["main_menu"],
-                "actions": [create_macro_action("until home")],
+                "timeout": 120,
+                "templates": [],
+                "actions": [
+                    create_tap_action(
+                        template="main_menu",
+                        likelihood=0.9,
+                        delay_after=2.0
+                    ),
+                    create_tap_action(
+                        template="delete_data",
+                        likelihood=0.9,
+                        delay_after=2.0
+                    ),
+                    create_tap_action(
+                        template="delete_data_2",
+                        likelihood=0.9,
+                        delay_after=2.0
+                    ),
+                    create_tap_action(
+                        template="delete_data_2",
+                        likelihood=0.9,
+                        delay_after=2.0
+                    ),
+                    create_tap_action(
+                        template="close",
+                        likelihood=0.9,
+                        delay_after=2.0
+                    ),
+                    create_tap_action(
+                        template="umamusume",
+                        likelihood=0.9,
+                        delay_after=2.0,
+                        timeout=30
+                    ),
+                    create_tap_action(
+                        template="agree",
+                        likelihood=0.9,
+                        delay_after=2.0
+                    ),
+                    create_tap_action(
+                        template="agree",
+                        likelihood=0.9,
+                        delay_after=2.0
+                    ),
+                    create_tap_action(
+                        template="change_country",
+                        likelihood=0.9,
+                        delay_after=2.0
+                    ),
+                    create_tap_action(
+                        template="ok",
+                        likelihood=0.9,
+                        delay_after=2.0
+                    ),
+                    create_tap_action(
+                        template="ok",
+                        likelihood=0.9,
+                        delay_after=2.0
+                    ),
+                    create_tap_action(
+                        template="write",
+                        likelihood=0.9,
+                        delay_after=2.0
+                    ),
+                    create_typing_action(
+                        text="200001",
+                        clear_first=False,
+                        press_enter=True,
+                        delay_after=1.0
+                    ),
+                    create_tap_action(
+                        template="ok",
+                        likelihood=0.9,
+                        delay_after=2.0
+                    ),
+                    create_tap_action(
+                        template="ok",
+                        likelihood=0.9,
+                        delay_after=2.0
+                    ),
+                    create_tap_action(
+                        template="cancel",
+                        likelihood=0.9,
+                        delay_after=2.0
+                    ),
+                    create_tap_action(
+                        template="later",
+                        likelihood=0.9,
+                        delay_after=2.0
+                    ),
+                    create_tap_action(
+                        template="skip btn",
+                        likelihood=0.9,
+                        delay_after=2.0
+                    ),
+                    create_tap_action(
+                        template="write",
+                        likelihood=0.9,
+                        delay_after=2.0
+                    ),
+                    create_typing_action(
+                        text="e",
+                        clear_first=False,
+                        press_enter=True,
+                        delay_after=1.0
+                    ),
+                    create_tap_action(
+                        template="register",
+                        likelihood=0.9,
+                        delay_after=2.0
+                    ),
+                    create_tap_action(
+                        template="register",
+                        likelihood=0.9,
+                        delay_after=2.0
+                    ),
+                    create_tap_action(
+                        template="ok",
+                        likelihood=0.9,
+                        delay_after=2.0
+                    ),
+                    create_loop_action(
+                        actions=[
+                            create_tap_action(
+                                template="skip sm",
+                                likelihood=0.9,
+                                delay_after=2.0,
+                                timeout=0.5
+                            ),
+                        ],
+                        condition="close",
+                        timeout=60
+                    ),
+                    create_loop_action(
+                        actions=[
+                            create_tap_action(
+                                template="close",
+                                likelihood=0.9,
+                                delay_after=3.0,
+                                timeout=0.5
+                            ),
+                        ],
+                        condition="home_screen",
+                        timeout=60
+                    )
+                ],
+                "next_states": ["claim_reward"]
+            },
+            "claim_reward": {
+                "timeout": 20,
+                "templates": ["home_screen"],
+                "actions": [
+                    create_tap_action(
+                        template="reward_button",
+                        likelihood=0.9,
+                        delay_after=2.0
+                    ),
+                    create_tap_action(
+                        template="collect_all_button",
+                        likelihood=0.9,
+                        delay_before=2.0,
+                        delay_after=5
+                    ),
+                    create_loop_action(
+                        actions=[
+                            create_tap_action(
+                                template="close",
+                                likelihood=0.9,
+                                delay_after=2.0,
+                                timeout=0.5
+                            )
+                        ],
+                        condition="home_screen",
+                        timeout=10
+                    ),
+                    
+                ],
                 "next_states": ["navigating_to_friends"]
             },
             "navigating_to_friends": {
@@ -97,11 +271,6 @@ class UmamusumeFpGame(BaseGame):
                 "timeout": 30,
                 "templates": [],
                 "actions": [
-                    create_tap_action(
-                        template="friend_id_input",
-                        likelihood=0.9,
-                        delay_after=2.0
-                    ),
                     create_typing_action(
                         text="230856527486",
                         clear_first=True,
@@ -134,12 +303,370 @@ class UmamusumeFpGame(BaseGame):
                         delay_after=2.0
                     ),
                 ],
-                "next_states": ["waiting_for_friend_list"]
+                "next_states": ["back_to_home"]
             },
-            "waiting_for_friend_list": {
+            "back_to_home": {
                 "timeout": 30,
-                "templates": ["friend_list", "friends_tab"],
-                "actions": [],
+                "templates": ["home"],
+                "actions": [
+                    create_tap_action(
+                        template="home",
+                        likelihood=0.9,
+                        delay_after=5.0
+                    ),
+                ],
+                "next_states": ["options"]
+            },
+            "options": {
+                "timeout": 60,
+                "templates": ["home_screen"],
+                "actions": [create_macro_action("options")],
+                "next_states": ["start_career"]
+            },
+            "start_career": {
+                "timeout": 240,
+                "templates": [],
+                "actions": [
+                    create_tap_action(
+                        template="career",
+                        likelihood=0.9,
+                        delay_after=5.0
+                    ),
+                    create_tap_action(
+                        template="next",
+                        likelihood=0.9,
+                        delay_before=2.0,
+                        delay_after=2.0
+                    ),
+                    create_tap_action(
+                        template="next",
+                        likelihood=0.9,
+                        delay_after=2.0
+                    ),
+                    create_tap_action(
+                        template="auto select",
+                        likelihood=0.9,
+                        delay_after=2.0
+                    ),
+                    create_tap_action(
+                        template="ok",
+                        likelihood=0.9,
+                        delay_after=2.0
+                    ),
+                    create_tap_action(
+                        template="next",
+                        likelihood=0.9,
+                        delay_after=2.0
+                    ),
+                    create_tap_action(
+                        template="auto select",
+                        likelihood=0.9,
+                        delay_after=2.0
+                    ),
+                    create_tap_action(
+                        template="ok",
+                        likelihood=0.9,
+                        delay_after=2.0
+                    ),
+                    create_tap_action(
+                        template="start career",
+                        likelihood=0.9,
+                        delay_after=2.0
+                    ),
+                    create_tap_action(
+                        template="start career 2",
+                        likelihood=0.9,
+                        delay_after=5.0
+                    ),
+                ],
+                "next_states": ["career tutorial"]
+            },
+            "career tutorial": {
+                "timeout": 240,
+                "templates": [],
+                "actions": [
+                    create_tap_action(
+                        template="skip sm",
+                        likelihood=0.9,
+                        delay_before=5.0,
+                        delay_after=2.0
+                    ),
+                    create_tap_action(
+                        template="shorten all",
+                        likelihood=0.9,
+                        delay_after=2.0
+                    ),
+                    create_tap_action(
+                        template="confirm",
+                        likelihood=0.9,
+                        delay_after=5.0
+                    ),
+                    create_loop_action(
+                        actions=[
+                            create_tap_action(
+                                template="skip off",
+                                likelihood=0.9,
+                                delay_before=2.0,
+                                delay_after=2.0,
+                                timeout=0.5
+                            ),
+                            create_tap_action(
+                                template="skip 1x",
+                                likelihood=0.9,
+                                delay_after=2.0,
+                                timeout=0.5
+                            )
+                        ],
+                        condition="next",
+                        timeout=30,
+                        use_single_screenshot=True
+                    ),
+                    create_loop_action(
+                        actions=[
+                            create_tap_action(
+                                template="next",
+                                likelihood=0.9,
+                                delay_after=1.0,
+                                timeout=0.5
+                            )
+                        ],
+                        condition="close",
+                        timeout=30
+                    ),
+                    create_tap_action(
+                        template="close",
+                        likelihood=0.9,
+                        delay_after=1.0
+                    ),
+                ],
+                "next_states": ["career race tutorial"]
+            },
+            "career race tutorial": {
+                "timeout": 540,
+                "templates": [],
+                "actions": [
+                    create_loop_action(
+                        actions=[
+                            create_tap_action(
+                                template="rest",
+                                likelihood=0.9,
+                                timeout=0.5,
+                            ),
+                            create_tap_action(
+                                template="skip off",
+                                likelihood=0.9,
+                                delay_after=1.0,
+                                timeout=0.5,
+                            ),
+                            create_tap_action(
+                                template="skip 1x",
+                                likelihood=0.9,
+                                timeout=0.5,
+                            ),
+                            create_tap_action(
+                                template="upper choice",
+                                likelihood=0.9,
+                                timeout=0.5,
+                            )
+                        ],
+                        condition="race",
+                        use_single_screenshot=True,
+                    ),
+                    create_tap_action(
+                        template="race",
+                        likelihood=0.9,
+                        delay_after=1.0
+                    ),
+                    create_loop_action(
+                        actions=[
+                            create_tap_action(
+                                template="next",
+                                likelihood=0.9,
+                                delay_after=1.0,
+                                timeout=0.5
+                            )],
+                        condition="close",
+                        timeout=10,
+                    ),
+                    create_tap_action(
+                        template="close",
+                        likelihood=0.9,
+                        delay_after=1.0,
+                        timeout=0.5
+                    ),
+                    create_tap_action(
+                        template="race 2",
+                        likelihood=0.9,
+                        delay_after=2.0,
+                        timeout=10
+                    ),
+                    create_tap_action(
+                        template="race 2",
+                        likelihood=0.9,
+                        delay_after=5.0,
+                        timeout=10
+                    ),
+                    create_tap_action(
+                        template="skip off",
+                        likelihood=0.9,
+                        delay_before=2.0,
+                        delay_after=1.0,
+                        timeout=10
+                    ),
+                    create_tap_action(
+                        template="skip 1x",
+                        likelihood=0.9,
+                        delay_after=3.0,
+                        timeout=10
+                    ),
+                    create_tap_action(
+                        template="race 2",
+                        likelihood=0.9,
+                        delay_after=1.0,
+                        timeout=10
+                    ),
+                    create_tap_action(
+                        template="ok",
+                        likelihood=0.9,
+                        delay_after=5.0
+                    ),
+                    create_tap_action(
+                        template="race 3",
+                        likelihood=0.9,
+                        delay_after=1.0,
+                        timeout=10
+                    ),
+                    create_loop_action(
+                        actions=[
+                            create_tap_action(
+                                template="skip sm",
+                                likelihood=0.9,
+                                delay_after=5.0,
+                                timeout=0.5
+                            ),
+                            create_tap_action(
+                                template="concert menu",
+                                likelihood=0.9,
+                                delay_after=5.0,
+                                timeout=0.5
+                            ),
+                            create_tap_action(
+                                template="close",
+                                likelihood=0.9,
+                                delay_after=5.0,
+                                timeout=0.5
+                            )
+                        ],
+                        condition="next",
+                        use_single_screenshot=True,
+                        timeout=120,
+                    ),
+                    create_tap_action(
+                        template="next",
+                        likelihood=0.9,
+                        delay_after=1.0
+                    ),
+                    create_tap_action(
+                        template="next 2",
+                        likelihood=0.9,
+                        delay_after=5.0
+                    ),
+                     create_tap_action(
+                        template="skip off",
+                        likelihood=0.9,
+                        delay_after=1.0
+                    ),
+                    create_tap_action(
+                        template="skip 1x",
+                        likelihood=0.9,
+                        delay_after=3.0
+                    ),
+                    create_tap_action(
+                        template="next",
+                        likelihood=0.9,
+                        delay_after=1.0
+                    ),
+                    create_tap_action(
+                        template="next",
+                        likelihood=0.9,
+                        delay_after=1.0
+                    ),
+                    create_loop_action(
+                        actions=[
+                            create_tap_action(
+                                template="rest",
+                                likelihood=0.9,
+                                timeout=0.5,
+                            ),
+                            create_tap_action(
+                                template="skip off",
+                                likelihood=0.9,
+                                delay_after=1.0,
+                                timeout=0.5,
+                            ),
+                            create_tap_action(
+                                template="skip 1x",
+                                likelihood=0.9,
+                                timeout=0.5,
+                            ),
+                            create_tap_action(
+                                template="upper choice",
+                                likelihood=0.9,
+                                timeout=0.5,
+                            ),
+                            create_tap_action(
+                                template="cancel",
+                                likelihood=0.9,
+                                delay_after=1.0,
+                                timeout=0.5
+                            )
+                        ],
+                        use_single_screenshot=True,
+                        condition="next",
+                        condition_likelihood=0.8
+                    ),
+                    create_tap_action(
+                        template="next",
+                        likelihood=0.9,
+                        delay_after=3.0,
+                        timeout=0.5
+                    ),
+                    create_tap_action(
+                        template="complete career",
+                        likelihood=0.9,
+                        delay_after=3.0
+                    ),
+                    create_tap_action(
+                        template="finish",
+                        likelihood=0.9,
+                        delay_after=3.0
+                    ),
+                    create_loop_action(
+                        actions=[
+                            create_tap_action(
+                                template="close",
+                                likelihood=0.9,
+                                delay_after=1.0,
+                                timeout=0.5
+                            ),
+                            create_tap_action(
+                                template="next",
+                                likelihood=0.9,
+                                delay_after=1.0,
+                                timeout=0.5
+                            )
+                        ],
+                        use_single_screenshot=True,
+                        condition="to home",
+                    ),
+                    create_tap_action(
+                        template="to home",
+                        likelihood=0.9,
+                        delay_after=1.0,
+                        timeout=0.5
+                    ),
+                    
+                ],
                 "next_states": ["selecting_friend"]
             },
             "selecting_friend": {

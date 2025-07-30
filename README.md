@@ -469,4 +469,37 @@ The framework now includes improved template detection for tap actions:
 - **Coordinate Storage**: Detected coordinates are stored for future use
 - **Fallback Handling**: If template detection fails, the action is marked as failed
 
-This ensures more reliable automation even when UI elements move or change positions. 
+This ensures more reliable automation even when UI elements move or change positions.
+
+## Action Index Tracking
+
+The framework now includes intelligent action index tracking that prevents unnecessary restarts:
+
+- **Resume from Failure**: When a template is not detected or an action fails, the system stays at the current action index instead of resetting to the beginning of the state
+- **Progressive Execution**: Actions are executed sequentially, and successful actions advance the index while failed actions remain at the current position
+- **State Persistence**: The action index is maintained within each state, allowing for more efficient automation flows
+- **Automatic Reset**: When all actions in a state complete successfully, the index resets to 0 for the next state
+
+### Example Scenario
+
+Consider a state with multiple tap actions:
+```python
+"career_started": {
+    "timeout": 240,
+    "templates": [],
+    "actions": [
+        create_tap_action("skip_sm", likelihood=0.9),
+        create_tap_action("shorten_all", likelihood=0.9),
+        create_tap_action("confirm", likelihood=0.9),
+        create_tap_action("skip_off", likelihood=0.9),
+        create_tap_action("skip_1x", likelihood=0.9)
+    ],
+    "next_states": ["next_state"]
+}
+```
+
+**Before**: If action 3 ("confirm") fails, the entire state would restart from action 1 on the next iteration.
+
+**After**: If action 3 ("confirm") fails, the system will retry action 3 on the next iteration, preserving the progress of actions 1 and 2.
+
+This feature significantly improves automation reliability and reduces unnecessary repetition of successful actions. 
