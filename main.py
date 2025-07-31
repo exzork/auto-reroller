@@ -18,7 +18,6 @@ sys.path.insert(0, str(project_root))
 from core.automation_engine import AutomationEngine
 from core.device_manager import DeviceManager
 from games.game_factory import GameFactory
-from web_interface import create_web_interface
 
 def parse_arguments():
     """Parse command-line arguments for the automation framework"""
