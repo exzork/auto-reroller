@@ -92,6 +92,10 @@ class AutomationInstance:
         current_state = self.instance_data['current_state']
         base_timeout = state_timeouts.get(current_state, 240)  # Default 4 minutes
         
+        # If timeout is None or 0, this state has no timeout (runs indefinitely)
+        if base_timeout is None or base_timeout <= 0:
+            return False
+        
         # Adjust timeout based on macro speed multiplier
         adjusted_timeout = base_timeout * self.macro_executor.speed_multiplier
         
@@ -476,9 +480,11 @@ class AutomationInstance:
         elif action_type == ActionType.CONDITIONAL:
             condition = action_config.get('condition')
             if_true = action_config.get('if_true', [])
-            if_false = action_config.get('if_false', [])
+            if_false = action_config.get('if_false', [])  # Default to empty list instead of None
             timeout = action_config.get('timeout')
             likelihood = action_config.get('likelihood')
+            if_true_state = action_config.get('if_true_state')
+            if_false_state = action_config.get('if_false_state')
             
             if self.verbose:
                 print(f"🔀 Instance #{self.instance_number}: Executing conditional action")
@@ -489,6 +495,10 @@ class AutomationInstance:
                     print(f"   ⏱️ Timeout: {timeout}s")
                 if likelihood:
                     print(f"   🎯 Likelihood: {likelihood}")
+                if if_true_state:
+                    print(f"   🎯 If true state: {if_true_state}")
+                if if_false_state:
+                    print(f"   🎯 If false state: {if_false_state}")
             
             # Check condition
             screenshot = self.get_screenshot()
@@ -499,16 +509,26 @@ class AutomationInstance:
                     condition_met = self.detect_template(screenshot, condition)
                 
                 actions_to_execute = if_true if condition_met else if_false
+                target_state = if_true_state if condition_met else if_false_state
                 
                 if self.verbose:
                     print(f"   {'✅' if condition_met else '❌'} Condition '{condition}' {'met' if condition_met else 'not met'}")
                     print(f"   🎬 Executing {len(actions_to_execute)} action(s)")
+                    if target_state:
+                        print(f"   🎯 Will jump to state: {target_state}")
                 
                 # Execute actions
                 for action in actions_to_execute:
                     if not self.execute_action(action):
                         print(f"❌ Instance #{self.instance_number}: Failed to execute action in conditional")
                         return False
+                
+                # Handle state jumping if specified
+                if target_state:
+                    if self.verbose:
+                        print(f"   🎯 Instance #{self.instance_number}: Jumping to state: {target_state}")
+                    self.change_state(target_state)
+                    return True  # Return True since state change was successful
                 
                 return True
             else:
@@ -628,6 +648,47 @@ class AutomationInstance:
             
             if self.verbose:
                 print(f"   ✅ Instance #{self.instance_number}: Loop completed after {iteration} iterations")
+            
+            return True
+            
+        elif action_type == ActionType.RESTART:
+            delay_before = action_config.get('delay_before')
+            delay_after = action_config.get('delay_after')
+            timeout = action_config.get('timeout')
+            
+            if self.verbose:
+                print(f"🔄 Instance #{self.instance_number}: Executing restart action")
+                if delay_before:
+                    print(f"   ⏱️ Delay before: {delay_before}s")
+                if delay_after:
+                    print(f"   ⏱️ Delay after: {delay_after}s")
+                if timeout:
+                    print(f"   ⏱️ Timeout: {timeout}s")
+            
+            # Apply delay before if specified
+            if delay_before:
+                time.sleep(delay_before)
+            
+            # Execute app restart
+            if self.verbose:
+                print(f"🔄 Instance #{self.instance_number}: Restarting app...")
+            
+            success = self.device_manager.restart_app(
+                self.device_id,
+                self.game.get_app_package(),
+                self.game.get_app_activity()
+            )
+            
+            if not success:
+                print(f"❌ Instance #{self.instance_number}: Failed to restart app")
+                return False
+            
+            if self.verbose:
+                print(f"✅ Instance #{self.instance_number}: App restart successful")
+            
+            # Apply delay after if specified
+            if delay_after:
+                time.sleep(delay_after)
             
             return True
             

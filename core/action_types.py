@@ -17,6 +17,7 @@ class ActionType(str, Enum):
     CONDITIONAL = "conditional"
     LOOP = "loop"
     TYPING = "typing"
+    RESTART = "restart"
 
 
 class MacroAction(TypedDict):
@@ -85,6 +86,8 @@ class ConditionalAction(TypedDict):
     if_false: Optional[List["ActionConfig"]]
     timeout: Optional[float]
     likelihood: Optional[float]  # Custom detection threshold for condition template
+    if_true_state: Optional[str]  # State to jump to if condition is true
+    if_false_state: Optional[str]  # State to jump to if condition is false
 
 
 class LoopAction(TypedDict):
@@ -98,6 +101,14 @@ class LoopAction(TypedDict):
     use_single_screenshot: Optional[bool]  # Use one screenshot for entire loop instead of per action
 
 
+class RestartAction(TypedDict):
+    """Restart app action configuration"""
+    type: Literal["restart"]
+    delay_before: Optional[float]  # Delay before restarting
+    delay_after: Optional[float]   # Delay after restarting
+    timeout: Optional[float]       # Timeout for restart operation
+
+
 # Union type for all action configurations
 ActionConfig = Union[
     MacroAction,
@@ -107,7 +118,8 @@ ActionConfig = Union[
     ScreenshotAction,
     TypingAction,
     ConditionalAction,
-    LoopAction
+    LoopAction,
+    RestartAction
 ]
 
 
@@ -212,15 +224,18 @@ def create_typing_action(text: str, clear_first: Optional[bool] = None, delay_be
 
 def create_conditional_action(condition: str, if_true: List[ActionConfig], 
                            if_false: Optional[List[ActionConfig]] = None, timeout: Optional[float] = None,
-                           likelihood: Optional[float] = None) -> ConditionalAction:
+                           likelihood: Optional[float] = None, if_true_state: Optional[str] = None,
+                           if_false_state: Optional[str] = None) -> ConditionalAction:
     """Create a conditional action"""
     return {
         "type": "conditional",
         "condition": condition,
         "if_true": if_true,
-        "if_false": if_false,
+        "if_false": if_false or [],  # Ensure if_false is never None
         "timeout": timeout,
-        "likelihood": likelihood
+        "likelihood": likelihood,
+        "if_true_state": if_true_state,
+        "if_false_state": if_false_state
     }
 
 
@@ -239,6 +254,17 @@ def create_loop_action(actions: List[ActionConfig], max_iterations: Optional[int
     }
 
 
+def create_restart_action(delay_before: Optional[float] = None, delay_after: Optional[float] = None, 
+                         timeout: Optional[float] = None) -> RestartAction:
+    """Create a restart app action"""
+    return {
+        "type": "restart",
+        "delay_before": delay_before,
+        "delay_after": delay_after,
+        "timeout": timeout
+    }
+
+
 def create_loop_action_with_single_screenshot(actions: List[ActionConfig], max_iterations: Optional[int] = None,
                                             condition: Optional[str] = None, timeout: Optional[float] = None,
                                             condition_likelihood: Optional[float] = None) -> LoopAction:
@@ -253,8 +279,9 @@ def create_loop_action_with_single_screenshot(actions: List[ActionConfig], max_i
     )
 
 
-def create_state_with_if_condition(timeout: int, templates: List[str], next_states: List[str],
-                                 if_condition: str, if_true_actions: List[ActionConfig], 
+def create_state_with_if_condition(if_condition: str, if_true_actions: List[ActionConfig], 
+                                 timeout: Optional[int] = None, templates: Optional[List[str]] = None, 
+                                 next_states: Optional[List[str]] = None,
                                  if_false_actions: Optional[List[ActionConfig]] = None,
                                  if_likelihood: Optional[float] = None,
                                  processes_items: Optional[bool] = None,
@@ -262,9 +289,9 @@ def create_state_with_if_condition(timeout: int, templates: List[str], next_stat
     """Create a state configuration with if condition"""
     return {
         "timeout": timeout,
-        "templates": templates,
+        "templates": templates or [],
         "actions": [],  # Empty since we're using conditional actions
-        "next_states": next_states,
+        "next_states": next_states or [],
         "if_condition": if_condition,
         "if_true_actions": if_true_actions,
         "if_false_actions": if_false_actions or [],
@@ -369,6 +396,23 @@ def validate_action_config(action: Dict[str, Any]) -> List[str]:
         if condition_likelihood is not None:
             if not isinstance(condition_likelihood, (int, float)) or condition_likelihood < 0.0 or condition_likelihood > 1.0:
                 errors.append("Loop action condition_likelihood must be a number between 0.0 and 1.0")
+    
+    elif action_type == "restart":
+        # Validate delay_before if provided
+        delay_before = action.get("delay_before")
+        if delay_before is not None:
+            if not isinstance(delay_before, (int, float)) or delay_before < 0.0:
+                errors.append("Restart action delay_before must be a non-negative number")
+        # Validate delay_after if provided
+        delay_after = action.get("delay_after")
+        if delay_after is not None:
+            if not isinstance(delay_after, (int, float)) or delay_after < 0.0:
+                errors.append("Restart action delay_after must be a non-negative number")
+        # Validate timeout if provided
+        timeout = action.get("timeout")
+        if timeout is not None:
+            if not isinstance(timeout, (int, float)) or timeout <= 0.0:
+                errors.append("Restart action timeout must be a positive number")
     
     elif action_type == "typing":
         if "text" not in action:

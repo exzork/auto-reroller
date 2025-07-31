@@ -131,12 +131,18 @@ class BaseGame(ABC):
         """Get default score for unspecified items"""
         return self.config.get('default_item_score', 5)
     
-    def get_state_timeouts(self) -> Dict[str, int]:
+    def get_state_timeouts(self) -> Dict[str, Optional[int]]:
         """Get timeout configuration for each state"""
         automation_states = self.get_automation_states()
         timeouts = {}
         for state, config in automation_states.items():
-            timeouts[state] = config.get('timeout', 60)
+            # If timeout is not specified, use None (no timeout)
+            # If timeout is explicitly set to 0, use None (no timeout)
+            # Otherwise use the specified timeout value
+            timeout = config.get('timeout')
+            if timeout == 0:
+                timeout = None
+            timeouts[state] = timeout
         return timeouts
     
     def get_template_threshold(self, template_name: str) -> float:

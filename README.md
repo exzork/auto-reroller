@@ -244,7 +244,7 @@ Each game defines a state machine for automation flow:
 ```json
 {
     "state_name": {
-        "timeout": 60,                    // Max time in seconds
+        "timeout": 60,                    // Max time in seconds (optional)
         "templates": ["template1"],       // Templates to detect
         "macros": ["macro1", "macro2"],   // Macros to execute
         "processes_items": true,          // Whether to detect items
@@ -252,6 +252,13 @@ Each game defines a state machine for automation flow:
     }
 }
 ```
+
+### Timeout Behavior
+
+- **With timeout**: States with a `timeout` value will automatically restart the app if they run longer than the specified time
+- **Without timeout**: States without a `timeout` field or with `timeout: 0` will run indefinitely without timing out
+- **Default behavior**: If no timeout is specified, the state runs indefinitely
+- **Timeout adjustment**: Timeouts are automatically adjusted based on the macro speed multiplier
 
 ## Keyboard Controls
 
@@ -458,6 +465,12 @@ create_swipe_action(
 Capture and optionally process screenshots:
 ```python
 create_screenshot_action(save_path="debug.png", process_items=True)
+```
+
+### Restart Actions
+Restart the Android app:
+```python
+create_restart_action(delay_before=2.0, delay_after=5.0, timeout=30)
 ```
 
 ## Improved Template Detection
