@@ -180,7 +180,7 @@ class UmamusumeFpGame(BaseGame):
                         delay_after=2.0
                     ),
                     create_tap_action(
-                        template="write",
+                        template="write name",
                         likelihood=0.8,
                         delay_after=2.0
                     ),

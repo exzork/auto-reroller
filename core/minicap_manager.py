@@ -251,16 +251,16 @@ class MinicapManager:
             with open(local_tmp_path, 'rb') as f:
                 image_data = f.read()
             
-            # Clean up device file
-            subprocess.run([
-                'adb', '-s', device_id, 'shell', 'rm', '-f', device_tmp_path
-            ], capture_output=True, timeout=5)
+            # Clean up device file - COMMENTED OUT to preserve last screenshot
+            # subprocess.run([
+            #     'adb', '-s', device_id, 'shell', 'rm', '-f', device_tmp_path
+            # ], capture_output=True, timeout=5)
             
-            # Clean up local file
-            try:
-                os.remove(local_tmp_path)
-            except:
-                pass
+            # Clean up local file - COMMENTED OUT to preserve last screenshot
+            # try:
+            #     os.remove(local_tmp_path)
+            # except:
+            #     pass
             
             return image_data
             
