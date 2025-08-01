@@ -918,8 +918,7 @@ class UmamusumeFpGame(BaseGame):
                                 timeout=0.1
                             )
                         ],
-                        condition="race 2",
-                        timeout=90,
+                        condition="ok"
                     ),
                     create_tap_action(
                         template="ok",
