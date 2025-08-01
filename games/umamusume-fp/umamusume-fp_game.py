@@ -420,7 +420,7 @@ class UmamusumeFpGame(BaseGame):
                             )
                         ],
                         condition="next",
-                        timeout=30,
+                        timeout=60,
                         use_single_screenshot=True
                     ),
                     create_loop_action(
@@ -910,23 +910,16 @@ class UmamusumeFpGame(BaseGame):
                         delay_after=1.0,
                         timeout=0.1
                     ),
-                    create_tap_action(
-                        template="race 2",
-                        likelihood=0.9,
-                        delay_after=2.0,
-                        timeout=10
-                    ),
-                    create_tap_action(
-                        template="race 2",
-                        likelihood=0.9,
-                        delay_after=5.0,
-                        timeout=10
-                    ),
-                    create_tap_action(
-                        template="race 2",
-                        likelihood=0.9,
-                        delay_after=1.0,
-                        timeout=10
+                    create_loop_action(
+                        actions=[
+                            create_tap_action(
+                                template="race 2",
+                                likelihood=0.9,
+                                timeout=0.1
+                            )
+                        ],
+                        condition="race 2",
+                        timeout=90,
                     ),
                     create_tap_action(
                         template="ok",
