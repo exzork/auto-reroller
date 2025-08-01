@@ -145,7 +145,7 @@ class UmamusumeFpGame(BaseGame):
                     ),
                     create_tap_action(
                         template="write",
-                        likelihood=0.9,
+                        likelihood=0.8,
                         delay_after=2.0
                     ),
                     create_typing_action(
@@ -181,7 +181,7 @@ class UmamusumeFpGame(BaseGame):
                     ),
                     create_tap_action(
                         template="write",
-                        likelihood=0.9,
+                        likelihood=0.8,
                         delay_after=2.0
                     ),
                     create_typing_action(
