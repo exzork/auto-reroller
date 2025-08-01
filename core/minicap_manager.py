@@ -215,57 +215,104 @@ class MinicapManager:
             return None
     
     def get_screenshot_via_file(self, device_id: str) -> Optional[bytes]:
-        """Get screenshot via minicap file output (fallback method)"""
+        """Get screenshot via minicap socket connection (single frame)"""
+        import time
+        start_time = time.time()
+        
         try:
             # Use device info for correct resolution
             if not self.device_info:
                 if not self.setup_minicap(device_id):
                     return None
             
-            width = self.device_info['width']
-            height = self.device_info['height']
+            # Start minicap if not running
+            if not self.is_running:
+                if not self.start_minicap(device_id):
+                    return None
             
-            # Create unique tmp file for this device
-            tmp_filename = f"minicap_screenshot_{device_id.replace(':', '_').replace('-', '_')}.png"
-            device_tmp_path = f"/data/local/tmp/{tmp_filename}"
-            local_tmp_path = f"tmp/{tmp_filename}"
+            # Forward minicap port
+            subprocess.run([
+                'adb', '-s', device_id, 'forward', 'tcp:1313', 'localabstract:minicap'
+            ], capture_output=True, timeout=5)
             
-            # Create a temporary file for the screenshot with correct resolution
-            result = subprocess.run([
-                'adb', '-s', device_id, 'shell', 
-                f'LD_LIBRARY_PATH=/data/local/tmp /data/local/tmp/minicap -P {width}x{height}@{width}x{height}/0 -s > {device_tmp_path}'
-            ], capture_output=True, timeout=10)
+            # Connect to minicap socket
+            sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+            sock.settimeout(5)
+            sock.connect(('localhost', 1313))
             
-            if result.returncode != 0:
+            # Read banner (24 bytes) - minicap protocol
+            banner = b''
+            while len(banner) < 24:
+                chunk = sock.recv(24 - len(banner))
+                if not chunk:
+                    sock.close()
+                    return None
+                banner += chunk
+            
+            if len(banner) != 24:
+                sock.close()
                 return None
             
-            # Pull the screenshot file
-            result = subprocess.run([
-                'adb', '-s', device_id, 'pull', device_tmp_path, local_tmp_path
-            ], capture_output=True, timeout=10)
-            
-            if result.returncode != 0:
+            # Parse banner according to minicap protocol
+            # Format: [version(1), header_size(1), pid(4), real_width(4), real_height(4), virtual_width(4), virtual_height(4), orientation(1), quirk(1)]
+            try:
+                version = banner[0]
+                header_size = banner[1]  # This is 1 byte, not 4 bytes
+                pid = struct.unpack('<I', banner[2:6])[0]  # Bytes 2-5
+                real_width = struct.unpack('<I', banner[6:10])[0]  # Bytes 6-9
+                real_height = struct.unpack('<I', banner[10:14])[0]  # Bytes 10-13
+                virtual_width = struct.unpack('<I', banner[14:18])[0]  # Bytes 14-17
+                virtual_height = struct.unpack('<I', banner[18:22])[0]  # Bytes 18-21
+                orientation = banner[22]  # Byte 22
+                quirk = banner[23]  # Byte 23
+                
+            except Exception as e:
+                print(f"❌ Error parsing banner: {e}")
+                sock.close()
                 return None
             
-            # Read the file
-            with open(local_tmp_path, 'rb') as f:
-                image_data = f.read()
+            # Read frame size (4 bytes)
+            frame_size_data = b''
+            while len(frame_size_data) < 4:
+                chunk = sock.recv(4 - len(frame_size_data))
+                if not chunk:
+                    sock.close()
+                    return None
+                frame_size_data += chunk
             
-            # Clean up device file - COMMENTED OUT to preserve last screenshot
-            # subprocess.run([
-            #     'adb', '-s', device_id, 'shell', 'rm', '-f', device_tmp_path
-            # ], capture_output=True, timeout=5)
+            if len(frame_size_data) != 4:
+                sock.close()
+                return None
             
-            # Clean up local file - COMMENTED OUT to preserve last screenshot
-            # try:
-            #     os.remove(local_tmp_path)
-            # except:
-            #     pass
+            try:
+                frame_size = struct.unpack('<I', frame_size_data)[0]
+            except Exception as e:
+                print(f"❌ Error parsing frame size: {e}")
+                sock.close()
+                return None
             
-            return image_data
+            # Read frame data
+            frame_data = b''
+            while len(frame_data) < frame_size:
+                chunk = sock.recv(min(frame_size - len(frame_data), 4096))  # Read in chunks
+                if not chunk:
+                    break
+                frame_data += chunk
             
+            sock.close()
+            
+            if len(frame_data) == frame_size:
+                elapsed = (time.time() - start_time) * 1000  # Convert to milliseconds
+                print(f"📸 Captured screenshot for {device_id} in {elapsed:.1f}ms")
+                return frame_data
+            else:
+                elapsed = (time.time() - start_time) * 1000
+                print(f"❌ Failed to capture screenshot for {device_id} (took {elapsed:.1f}ms)")
+                return None
+                
         except Exception as e:
-            print(f"❌ Error getting screenshot via file for {device_id}: {e}")
+            elapsed = (time.time() - start_time) * 1000
+            print(f"❌ Error getting screenshot via socket for {device_id} (took {elapsed:.1f}ms): {e}")
             return None
     
     def get_screenshot(self, device_id: str) -> Optional[bytes]:

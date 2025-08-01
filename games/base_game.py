@@ -23,9 +23,54 @@ class BaseGame(ABC):
         self.cycles_per_session = 9  # Default value
         self.discord_webhook_url = None
         self.project_root = Path(__file__).parent.parent
+        self.counter = 0  # Initialize counter at 0
         
         # Load configuration
         self.load_config()
+    
+    def create_increment_counter(self):
+        """Increment the counter and return the new value"""
+        self.counter += 1
+        return self.counter
+    
+    def get_counter(self) -> int:
+        """Get the current counter value"""
+        return self.counter
+    
+    def reset_counter(self):
+        """Reset the counter to 0"""
+        self.counter = 0
+    
+    def get_counter_example_states(self) -> Dict[str, Dict[str, Any]]:
+        """Example automation states showing how to use the counter"""
+        from core.action_types import create_counter_action, create_macro_action
+        
+        return {
+            "start": {
+                "timeout": 30,
+                "templates": ["start_button"],
+                "actions": [
+                    create_counter_action(),  # Increment counter when starting
+                    create_macro_action("start")
+                ],
+                "next_states": ["main_loop"]
+            },
+            "main_loop": {
+                "timeout": 60,
+                "templates": ["loop_button"],
+                "actions": [
+                    create_counter_action(delay_before=0.5),  # Increment with delay
+                    create_macro_action("loop_action")
+                ],
+                "next_states": ["main_loop", "completed"]
+            },
+            "completed": {
+                "timeout": 10,
+                "templates": [],
+                "actions": [],
+                "next_states": ["start"]
+            }
+        }
     
     def load_config(self):
         """Load game configuration from file"""

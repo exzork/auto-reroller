@@ -13,6 +13,7 @@ from .device_manager import DeviceManager
 from .macro_executor import MacroExecutor
 from .image_detection import ImageDetector
 from .discord_notifier import DiscordNotifier
+from .minicap_stream_manager import MinicapStreamManager
 from games.base_game import BaseGame
 from .action_types import ActionType, validate_action_config, create_typing_action
 
@@ -23,7 +24,7 @@ class AutomationInstance:
     def __init__(self, device_id: str, instance_number: int, game: BaseGame, 
                  macro_executor: MacroExecutor, image_detector: ImageDetector,
                  device_manager: DeviceManager, discord_notifier: DiscordNotifier,
-                 verbose: bool = False):
+                 stream_manager: MinicapStreamManager = None, verbose: bool = False):
         self.device_id = device_id
         self.instance_number = instance_number
         self.game = game
@@ -31,6 +32,7 @@ class AutomationInstance:
         self.image_detector = image_detector
         self.device_manager = device_manager
         self.discord_notifier = discord_notifier
+        self.stream_manager = stream_manager
         self.verbose = verbose
         
         # Instance state
@@ -48,11 +50,14 @@ class AutomationInstance:
             print(f"🔍 Instance #{instance_number}: Detailed initialization for device: {device_id}")
             print(f"   Game: {game.get_display_name()}")
             print(f"   Initial state: {self.instance_data['current_state']}")
+            print(f"   Streaming enabled: {'✅' if stream_manager else '❌'}")
             # Log game-specific verbose configuration if available
             if hasattr(game, 'log_verbose_config'):
                 game.log_verbose_config(device_id)
         else:
             print(f"🤖 Instance #{instance_number} initialized for device: {device_id}")
+            if stream_manager:
+                print(f"   🎥 Streaming enabled")
     
     def start_background_timeout_checker(self):
         """Start background timeout checker"""
@@ -119,53 +124,83 @@ class AutomationInstance:
             print(f"🔄 Instance #{self.instance_number}: {old_state} → {new_state}")
     
     def handle_timeout(self) -> bool:
-        """Handle timeout by restarting app and resetting state"""
+        """Handle timeout by checking for timeout_state or restarting app"""
         try:
-            if self.verbose:
-                print(f"🔧 Instance #{self.instance_number}: Attempting app restart due to timeout")
+            current_state = self.instance_data['current_state']
             
-            # Restart the app
-            if self.device_manager.restart_app(
-                self.device_id, 
-                self.game.get_app_package(), 
-                self.game.get_app_activity()
-            ):
-                # Reset to initial state
-                initial_state = self.game.get_initial_state()
-                self.change_state(initial_state)
-                
-                # Force reset timeout timer (fix for bug where timeout doesn't reset after app restart)
-                self.current_state_start_time = time.time()
-                
-                # Reset action index and other instance data
-                self.current_action_index = 0
-                self.instance_data['cycle_count'] = 0
-                self.instance_data['detected_items'] = []
-                self.instance_data['account_id'] = None
-                
+            # Get automation states to check for timeout_state
+            automation_states = self.game.get_automation_states()
+            state_config = automation_states.get(current_state, {})
+            timeout_state = state_config.get('timeout_state')
+            
+            if timeout_state:
+                # Transition to timeout_state instead of restarting
                 if self.verbose:
-                    print(f"✅ Instance #{self.instance_number}: App restart successful, reset to state: {initial_state}")
+                    print(f"⏰ Instance #{self.instance_number}: Timeout occurred in state '{current_state}', transitioning to timeout_state: '{timeout_state}'")
+                else:
+                    print(f"⏰ Instance #{self.instance_number}: Timeout in '{current_state}' → '{timeout_state}'")
                 
+                self.change_state(timeout_state)
                 return True
             else:
+                # Default behavior: restart app
                 if self.verbose:
-                    print(f"❌ Instance #{self.instance_number}: App restart failed")
-                return False
+                    print(f"🔧 Instance #{self.instance_number}: Attempting app restart due to timeout")
+                
+                # Restart the app
+                if self.device_manager.restart_app(
+                    self.device_id, 
+                    self.game.get_app_package(), 
+                    self.game.get_app_activity()
+                ):
+                    # Reset to initial state
+                    initial_state = self.game.get_initial_state()
+                    self.change_state(initial_state)
+                    
+                    # Force reset timeout timer (fix for bug where timeout doesn't reset after app restart)
+                    self.current_state_start_time = time.time()
+                    
+                    # Reset action index and other instance data
+                    self.current_action_index = 0
+                    self.instance_data['cycle_count'] = 0
+                    self.instance_data['detected_items'] = []
+                    self.instance_data['account_id'] = None
+                    
+                    if self.verbose:
+                        print(f"✅ Instance #{self.instance_number}: App restart successful, reset to state: {initial_state}")
+                    
+                    return True
+                else:
+                    if self.verbose:
+                        print(f"❌ Instance #{self.instance_number}: App restart failed")
+                    return False
         except Exception as e:
             print(f"❌ Instance #{self.instance_number}: Error handling timeout: {e}")
             return False
     
     def get_screenshot(self):
-        """Get screenshot for this device"""
+        """Get screenshot for this device using streaming if available, otherwise file-based"""
         if self.verbose:
             print(f"📸 Instance #{self.instance_number}: Capturing screenshot")
         
+        # Try streaming first if available
+        if self.stream_manager:
+            frame = self.stream_manager.get_latest_frame(self.device_id)
+            if frame is not None:
+                if self.verbose:
+                    h, w = frame.shape[:2]
+                    print(f"📸 Instance #{self.instance_number}: Streaming frame captured ({w}x{h})")
+                return frame
+            elif self.verbose:
+                print(f"⚠️ Instance #{self.instance_number}: Streaming frame failed, falling back to file-based")
+        
+        # Fallback to file-based screenshot
         screenshot_bytes = self.device_manager.get_screenshot(self.device_id)
         if screenshot_bytes:
             screenshot = self.image_detector.bytes_to_image(screenshot_bytes)
             if self.verbose and screenshot is not None:
                 h, w = screenshot.shape[:2]
-                print(f"📸 Instance #{self.instance_number}: Screenshot captured ({w}x{h})")
+                print(f"📸 Instance #{self.instance_number}: File-based screenshot captured ({w}x{h})")
             return screenshot
         elif self.verbose:
             print(f"❌ Instance #{self.instance_number}: Failed to capture screenshot")
@@ -692,6 +727,33 @@ class AutomationInstance:
             
             return True
             
+        elif action_type == ActionType.COUNTER:
+            delay_before = action_config.get('delay_before')
+            delay_after = action_config.get('delay_after')
+            
+            if self.verbose:
+                print(f"🔢 Instance #{self.instance_number}: Executing counter increment action")
+                if delay_before:
+                    print(f"   ⏱️ Delay before: {delay_before}s")
+                if delay_after:
+                    print(f"   ⏱️ Delay after: {delay_after}s")
+            
+            # Apply delay before if specified
+            if delay_before:
+                time.sleep(delay_before)
+            
+            # Increment the counter
+            new_counter_value = self.game.create_increment_counter()
+            
+            if self.verbose:
+                print(f"🔢 Instance #{self.instance_number}: Counter incremented to {new_counter_value}")
+            
+            # Apply delay after if specified
+            if delay_after:
+                time.sleep(delay_after)
+            
+            return True
+            
         else:
             print(f"❌ Instance #{self.instance_number}: Unsupported action type: {action_type}")
             return False
@@ -1150,7 +1212,7 @@ class AutomationEngine:
     
     def __init__(self, game: BaseGame, device_manager: DeviceManager,
                  speed_multiplier: float = 1.0, inter_macro_delay: float = 0.0,
-                 max_instances: int = 8, verbose: bool = False):
+                 max_instances: int = 8, verbose: bool = False, use_streaming: bool = False):
         self.game = game
         self.device_manager = device_manager
         self.macro_executor = MacroExecutor(speed_multiplier, inter_macro_delay, verbose)
@@ -1158,52 +1220,83 @@ class AutomationEngine:
         self.discord_notifier = DiscordNotifier(game.get_discord_webhook())
         self.max_instances = max_instances
         self.verbose = verbose
+        self.use_streaming = use_streaming
         self.instances = []
         self.running = True
+        self.last_status_write = 0  # Track last status write time
+        
+        # Initialize stream manager if streaming is enabled
+        self.stream_manager = None
+        if self.use_streaming:
+            self.stream_manager = MinicapStreamManager()
+            print("🎥 Streaming mode enabled - using real-time frames for automation")
         
         if self.verbose:
             print(f"🔧 AutomationEngine: Initialized with verbose logging")
             print(f"   Speed multiplier: {speed_multiplier}x")
             print(f"   Inter-macro delay: {inter_macro_delay}s")
             print(f"   Max instances: {max_instances}")
+            print(f"   Streaming enabled: {'✅' if use_streaming else '❌'}")
     
-    def create_instances(self):
-        """Create automation instances for available devices"""
-        device_list = self.device_manager.get_device_list()[:self.max_instances]
-        
-        if self.verbose:
-            print(f"🔧 AutomationEngine: Creating {len(device_list)} instances")
-        
-        # Initialize minicap for each device
-        print("🔧 Setting up minicap for all devices...")
-        for device_id in device_list:
-            if self.verbose:
-                print(f"   Setting up minicap for device: {device_id}")
+    def write_status_to_file(self, start_time: float):
+        """Write current status to status.txt file"""
+        try:
+            elapsed_time = time.time() - start_time
+            total_sessions = sum(instance.instance_data['session_count'] for instance in self.instances)
+            sessions_per_hour = (total_sessions / elapsed_time) * 3600 if elapsed_time > 0 else 0
             
-            # Setup minicap for the device
-            if self.device_manager.setup_minicap_for_device(device_id):
-                # Start minicap service
-                if self.device_manager.start_minicap_for_device(device_id):
-                    if self.verbose:
-                        print(f"   ✅ Minicap started for device: {device_id}")
+            status_lines = []
+            status_lines.append(f"📊 STATUS ({len(self.instances)} instances) - {time.strftime('%Y-%m-%d %H:%M:%S')}")
+            status_lines.append(f"🎮 Game: {self.game.get_display_name()}")
+            status_lines.append(f"⏱️  Runtime: {elapsed_time/3600:.1f} hours")
+            status_lines.append(f"🔄 Total sessions: {total_sessions}")
+            status_lines.append(f"⚡ Speed: {sessions_per_hour:.1f} sessions/hour")
+            status_lines.append(f"🔢 Counter: {self.game.get_counter()}")
+            status_lines.append("")
+            
+            if self.verbose:
+                status_lines.append(f"🔧 Verbose mode: Active")
+                status_lines.append(f"📊 Detailed Instance Status:")
+            
+            for instance in self.instances:
+                data = instance.instance_data
+                total_score = 0
+                if data['detected_items']:
+                    total_score, _ = self.game.calculate_score(data['detected_items'])
+                
+                # Calculate time in current state
+                time_in_state = time.time() - instance.current_state_start_time
+                
+                if self.verbose:
+                    status_lines.append(f"   Instance #{instance.instance_number}:")
+                    status_lines.append(f"     • Device: {instance.device_id}")
+                    status_lines.append(f"     • Sessions: {data['session_count']}")
+                    status_lines.append(f"     • Current cycle: {data['cycle_count']}/{self.game.get_cycles_per_session()}")
+                    status_lines.append(f"     • State: {data['current_state']} ({time_in_state:.1f}s)")
+                    status_lines.append(f"     • Score: {total_score} ({len(data['detected_items'])} items)")
+                    status_lines.append(f"     • Account: {data['account_id'] or 'None'}")
+                    status_lines.append(f"     • Running: {'✅' if instance.running else '❌'}")
                 else:
-                    print(f"   ⚠️ Failed to start minicap for device: {device_id}")
-            else:
-                print(f"   ⚠️ Failed to setup minicap for device: {device_id}")
-        
-        # Create automation instances
-        for i, device_id in enumerate(device_list, 1):
-            instance = AutomationInstance(
-                device_id, i, self.game, self.macro_executor,
-                self.image_detector, self.device_manager, self.discord_notifier,
-                self.verbose
-            )
-            self.instances.append(instance)
-        
-        print(f"🚀 Created {len(self.instances)} automation instances")
+                    status_lines.append(f"   Instance #{instance.instance_number}: {data['session_count']} sessions, "
+                                      f"Score: {total_score}, State: {data['current_state']} ({time_in_state:.0f}s)")
+            
+            if self.verbose:
+                status_lines.append(f"")
+                status_lines.append(f"📊 System Status:")
+                status_lines.append(f"   • Macro speed: {self.macro_executor.speed_multiplier}x")
+                status_lines.append(f"   • Inter-macro delay: {self.macro_executor.inter_macro_delay}s")
+                status_lines.append(f"   • Discord webhook: {'✅' if self.discord_notifier.has_webhook() else '❌'}")
+                status_lines.append(f"   • Score threshold: {self.game.get_minimum_score_threshold()}")
+            
+            # Write to status.txt file
+            with open("status.txt", "w", encoding="utf-8") as f:
+                f.write("\n".join(status_lines))
+                
+        except Exception as e:
+            print(f"❌ Error writing status to file: {e}")
     
     def show_status(self, start_time: float):
-        """Show current status of all instances"""
+        """Show current status of all instances (legacy method for manual key press)"""
         elapsed_time = time.time() - start_time
         total_sessions = sum(instance.instance_data['session_count'] for instance in self.instances)
         sessions_per_hour = (total_sessions / elapsed_time) * 3600 if elapsed_time > 0 else 0
@@ -1213,6 +1306,7 @@ class AutomationEngine:
         print(f"⏱️  Runtime: {elapsed_time/3600:.1f} hours")
         print(f"🔄 Total sessions: {total_sessions}")
         print(f"⚡ Speed: {sessions_per_hour:.1f} sessions/hour")
+        print(f"🔢 Counter: {self.game.get_counter()}")
         
         if self.verbose:
             print(f"🔧 Verbose mode: Active")
@@ -1246,6 +1340,38 @@ class AutomationEngine:
             print(f"   • Inter-macro delay: {self.macro_executor.inter_macro_delay}s")
             print(f"   • Discord webhook: {'✅' if self.discord_notifier.has_webhook() else '❌'}")
             print(f"   • Score threshold: {self.game.get_minimum_score_threshold()}")
+    
+    def create_instances(self):
+        """Create automation instances for available devices"""
+        device_list = self.device_manager.get_device_list()[:self.max_instances]
+        
+        if self.verbose:
+            print(f"🔧 AutomationEngine: Creating {len(device_list)} instances")
+        
+        # Setup streaming if enabled
+        if self.use_streaming and self.stream_manager:
+            print("🎥 Setting up streaming for all devices...")
+            for i, device_id in enumerate(device_list):
+                port = 1313 + i  # Each device gets a different port
+                if self.stream_manager.start_streaming(device_id, port):
+                    if self.verbose:
+                        print(f"   ✅ Streaming started for device: {device_id} on port {port}")
+                    # Start the streaming thread to capture frames
+                    display_name = f"Device {i+1} ({device_id})"
+                    self.stream_manager.start_streaming_thread(device_id, display_name)
+                else:
+                    print(f"   ⚠️ Failed to start streaming for device: {device_id}")
+        
+        # Create automation instances
+        for i, device_id in enumerate(device_list, 1):
+            instance = AutomationInstance(
+                device_id, i, self.game, self.macro_executor,
+                self.image_detector, self.device_manager, self.discord_notifier,
+                self.stream_manager, self.verbose
+            )
+            self.instances.append(instance)
+        
+        print(f"🚀 Created {len(self.instances)} automation instances")
     
     def start(self):
         """Start the automation engine"""
@@ -1284,6 +1410,12 @@ class AutomationEngine:
                     if self.verbose:
                         print("🏁 All instances have stopped")
                     break
+                
+                # Write status to file every 5 seconds
+                current_time = time.time()
+                if current_time - self.last_status_write >= 5.0:
+                    self.write_status_to_file(start_time)
+                    self.last_status_write = current_time
                 
                 # Check for keyboard input
                 if msvcrt.kbhit():
@@ -1344,5 +1476,10 @@ class AutomationEngine:
             if self.verbose:
                 print(f"   Cleaning up minicap for device: {device_id}")
             self.device_manager.cleanup_minicap_for_device(device_id)
+        
+        # Cleanup streaming if enabled
+        if self.use_streaming and self.stream_manager:
+            print("🧹 Cleaning up streaming...")
+            self.stream_manager.stop_all_streaming()
         
         print("✅ Cleanup completed") 

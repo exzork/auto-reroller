@@ -13,7 +13,7 @@ from typing import Dict, Any, List, Tuple, Optional
 from pathlib import Path
 from games.base_game import BaseGame
 from core.action_types import (
-    create_loop_action, create_macro_action, create_restart_action, create_state_with_if_condition, create_tap_action, create_wait_action, create_typing_action,
+    create_counter_action, create_loop_action, create_macro_action, create_restart_action, create_state_with_if_condition, create_tap_action, create_wait_action, create_typing_action,
     ActionConfig, StateConfig, create_conditional_action
 )
 
@@ -530,6 +530,7 @@ class UmamusumeFpGame(BaseGame):
                     create_tap_action(
                         template="ok",
                         likelihood=0.9,
+                        delay_before=2.0,
                         delay_after=5.0
                     ),
                     create_tap_action(
@@ -673,7 +674,7 @@ class UmamusumeFpGame(BaseGame):
                         delay_after=1.0,
                         timeout=0.1
                     ),
-                    
+                    create_counter_action()
                 ],
                 "next_states": ["start career"]
             },
@@ -915,7 +916,8 @@ class UmamusumeFpGame(BaseGame):
                             create_tap_action(
                                 template="race 2",
                                 likelihood=0.9,
-                                timeout=0.1
+                                timeout=0.1,
+                                delay_after=3.0
                             )
                         ],
                         condition="ok"
@@ -1058,7 +1060,41 @@ class UmamusumeFpGame(BaseGame):
                         likelihood=0.9,
                         delay_after=1.0,
                         timeout=0.1
-                    )
+                    ),
+                    create_counter_action()
+                ],
+                "next_states": ["start career"],
+                "timeout_state":"restart career"
+            },
+            "restart career": {
+                "timeout": 60,
+                "templates": [],
+                "actions": [
+                    create_restart_action(timeout=20),
+                    create_tap_action(
+                        template="umamusume",
+                        likelihood=0.9,
+                        delay_after=2.0,
+                        timeout=30
+                    ),
+                    create_tap_action(
+                        template="later",
+                        likelihood=0.9,
+                        delay_after=2.0,
+                        timeout=10
+                    ),
+                    create_loop_action(
+                        actions=[
+                            create_tap_action(
+                                template="skip sm",
+                                likelihood=0.9,
+                                delay_after=2.0,
+                                timeout=0.1
+                            ),
+                        ],
+                        condition="home_screen",
+                        timeout=20
+                    ),
                 ],
                 "next_states": ["start career"]
             },

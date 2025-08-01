@@ -17,6 +17,7 @@ sys.path.insert(0, str(project_root))
 
 from core.automation_engine import AutomationEngine
 from core.device_manager import DeviceManager
+from core.minicap_stream_manager import MinicapStreamManager
 from games.game_factory import GameFactory
 
 def parse_arguments():
@@ -34,6 +35,8 @@ Examples:
   python main.py --picker umamusume  # Launch slot picker for umamusume
   python main.py umamusume --web  # Start with web interface
   python main.py --web-only  # Start web interface only
+  python main.py umamusume --stream  # Run automation with streaming (real-time frames)
+  python main.py umamusume --stream --stream-port-start 1320  # Custom port start
         """
     )
     
@@ -105,6 +108,15 @@ Examples:
     parser.add_argument('--no-ngrok',
                        action='store_true',
                        help='Disable ngrok tunnel (run locally only)')
+    
+    parser.add_argument('--stream',
+                       action='store_true',
+                       help='Enable streaming mode for automation (uses real-time frames instead of file-based screenshots)')
+    
+    parser.add_argument('--stream-port-start',
+                       type=int,
+                       default=1313,
+                       help='Starting port for minicap streaming (default: 1313)')
     
     return parser.parse_args()
 
@@ -248,6 +260,7 @@ def main():
             print(f"   • Inter-macro delay: {args.delay}s")
             print(f"   • Discord notifications: {'✅' if game.has_discord_webhook() else '❌'}")
             print(f"   • Web interface: {'✅' if args.web else '❌'}")
+            print(f"   • Streaming mode: {'✅' if args.stream else '❌'}")
             print("")
             
             # Verbose configuration details
@@ -279,7 +292,8 @@ def main():
                 speed_multiplier=args.speed,
                 inter_macro_delay=args.delay,
                 max_instances=len(available_devices),
-                verbose=args.verbose
+                verbose=args.verbose,
+                use_streaming=args.stream
             )
             
             # Update web interface with automation engine

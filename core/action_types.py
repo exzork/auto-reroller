@@ -18,6 +18,7 @@ class ActionType(str, Enum):
     LOOP = "loop"
     TYPING = "typing"
     RESTART = "restart"
+    COUNTER = "counter"
 
 
 class MacroAction(TypedDict):
@@ -109,6 +110,13 @@ class RestartAction(TypedDict):
     timeout: Optional[float]       # Timeout for restart operation
 
 
+class CounterAction(TypedDict):
+    """Counter increment action configuration"""
+    type: Literal["counter"]
+    delay_before: Optional[float]  # Delay before incrementing
+    delay_after: Optional[float]   # Delay after incrementing
+
+
 # Union type for all action configurations
 ActionConfig = Union[
     MacroAction,
@@ -119,7 +127,8 @@ ActionConfig = Union[
     TypingAction,
     ConditionalAction,
     LoopAction,
-    RestartAction
+    RestartAction,
+    CounterAction
 ]
 
 
@@ -136,6 +145,7 @@ class StateConfig(TypedDict):
     if_true_actions: Optional[List[ActionConfig]]  # Actions to execute if condition is met
     if_false_actions: Optional[List[ActionConfig]]  # Actions to execute if condition is not met
     if_likelihood: Optional[float]  # Custom detection threshold for if condition
+    timeout_state: Optional[str]  # State to transition to on timeout (instead of restarting)
 
 
 class AutomationStates(TypedDict):
@@ -262,6 +272,15 @@ def create_restart_action(delay_before: Optional[float] = None, delay_after: Opt
         "delay_before": delay_before,
         "delay_after": delay_after,
         "timeout": timeout
+    }
+
+
+def create_counter_action(delay_before: Optional[float] = None, delay_after: Optional[float] = None) -> CounterAction:
+    """Create a counter increment action"""
+    return {
+        "type": "counter",
+        "delay_before": delay_before,
+        "delay_after": delay_after
     }
 
 

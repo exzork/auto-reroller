@@ -12,7 +12,7 @@ from pathlib import Path
 from games.base_game import BaseGame
 from core.action_types import (
     create_macro_action, create_tap_action, create_wait_action, create_typing_action,
-    ActionConfig, StateConfig
+    create_counter_action, ActionConfig, StateConfig
 )
 
 

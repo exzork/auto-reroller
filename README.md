@@ -12,6 +12,7 @@ A modular, extensible framework for automating mobile games with parallel execut
 - **Macro automation**: Execute recorded macros with configurable timing
 - **State machine**: Robust automation flow with timeout handling
 - **Efficient screen capture**: Uses minicap for memory-efficient screen capture without leaks
+- **Real-time streaming**: Stream all devices at 30fps with OpenCV display using different ports
 
 ## Quick Start
 
@@ -41,7 +42,7 @@ ls minicap/
 # Should show: minicap  minicap.so
 ```
 
-### Screen Capture
+### Screen Capture & Streaming
 
 The framework uses **minicap** for efficient screen capture instead of the standard `screencap` command to prevent memory leaks during long-running automation sessions.
 
@@ -50,11 +51,20 @@ The framework uses **minicap** for efficient screen capture instead of the stand
 - Faster screen capture
 - More reliable for overnight automation
 - Automatic fallback to screencap if minicap fails
+- **Real-time streaming at 30fps with OpenCV display**
+- **Multiple device support with different ports**
 
 **Minicap Setup:**
 - Minicap files are automatically pushed to devices
 - Automatic device detection and configuration
 - Graceful fallback to screencap if minicap setup fails
+
+**Streaming Features:**
+- Real-time 30fps streaming for all connected devices
+- OpenCV display windows for each device
+- Different ports for each device (1313, 1314, 1315, etc.)
+- Press ESC in any window to stop streaming
+- Headless mode available for automation integration
 
 ### Basic Usage
 
@@ -80,8 +90,20 @@ python main.py umamusume --verbose --instances 1 --speed 1.0
 # Short form verbose flag
 python main.py umamusume -v --device emulator-5554
 
+# Stream all devices at 30fps with OpenCV display
+python main.py --stream
+
+# Stream with custom port start
+python main.py --stream --stream-port-start 1320
+
 # Test minicap integration
 python test_minicap.py
+
+# Test streaming functionality
+python test_streaming.py
+
+# Dedicated streaming tool
+python stream_devices.py
 ```
 
 ### Command Line Options
@@ -96,6 +118,8 @@ python test_minicap.py
 | `--config` | Custom config file path | None |
 | `--discord-webhook` | Discord webhook URL | None |
 | `--verbose`, `-v` | Enable verbose logging for debugging | False |
+| `--stream` | Stream all devices at 30fps with OpenCV display | False |
+| `--stream-port-start` | Starting port for minicap streaming | 1313 |
 
 ## Architecture
 
