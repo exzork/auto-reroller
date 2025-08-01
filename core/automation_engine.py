@@ -1174,6 +1174,24 @@ class AutomationEngine:
         if self.verbose:
             print(f"🔧 AutomationEngine: Creating {len(device_list)} instances")
         
+        # Initialize minicap for each device
+        print("🔧 Setting up minicap for all devices...")
+        for device_id in device_list:
+            if self.verbose:
+                print(f"   Setting up minicap for device: {device_id}")
+            
+            # Setup minicap for the device
+            if self.device_manager.setup_minicap_for_device(device_id):
+                # Start minicap service
+                if self.device_manager.start_minicap_for_device(device_id):
+                    if self.verbose:
+                        print(f"   ✅ Minicap started for device: {device_id}")
+                else:
+                    print(f"   ⚠️ Failed to start minicap for device: {device_id}")
+            else:
+                print(f"   ⚠️ Failed to setup minicap for device: {device_id}")
+        
+        # Create automation instances
         for i, device_id in enumerate(device_list, 1):
             instance = AutomationInstance(
                 device_id, i, self.game, self.macro_executor,
@@ -1317,4 +1335,14 @@ class AutomationEngine:
         print(f"🤖 Instances: {len(self.instances)} parallel")
         print(f"⏱️  Total runtime: {elapsed_time/3600:.1f} hours")
         print(f"🔄 Total sessions: {total_sessions}")
-        print(f"⚡ Average speed: {sessions_per_hour:.1f} sessions/hour") 
+        print(f"⚡ Average speed: {sessions_per_hour:.1f} sessions/hour")
+        
+        # Cleanup minicap for all devices
+        print("🧹 Cleaning up minicap for all devices...")
+        device_list = self.device_manager.get_device_list()
+        for device_id in device_list:
+            if self.verbose:
+                print(f"   Cleaning up minicap for device: {device_id}")
+            self.device_manager.cleanup_minicap_for_device(device_id)
+        
+        print("✅ Cleanup completed") 

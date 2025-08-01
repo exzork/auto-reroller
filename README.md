@@ -11,6 +11,7 @@ A modular, extensible framework for automating mobile games with parallel execut
 - **Template-based detection**: Flexible image recognition system
 - **Macro automation**: Execute recorded macros with configurable timing
 - **State machine**: Robust automation flow with timeout handling
+- **Efficient screen capture**: Uses minicap for memory-efficient screen capture without leaks
 
 ## Quick Start
 
@@ -20,6 +21,7 @@ A modular, extensible framework for automating mobile games with parallel execut
 - ADB (Android Debug Bridge)
 - Connected Android devices/emulators
 - Required Python packages: `cv2`, `numpy`, `requests`, `pytesseract`
+- Minicap files (included in `minicap/` directory)
 
 ### Installation
 
@@ -33,7 +35,26 @@ pip install opencv-python numpy requests pytesseract
 
 # Ensure ADB is in your PATH
 adb devices
+
+# Verify minicap files are present
+ls minicap/
+# Should show: minicap  minicap.so
 ```
+
+### Screen Capture
+
+The framework uses **minicap** for efficient screen capture instead of the standard `screencap` command to prevent memory leaks during long-running automation sessions.
+
+**Benefits of minicap:**
+- No memory leaks during extended use
+- Faster screen capture
+- More reliable for overnight automation
+- Automatic fallback to screencap if minicap fails
+
+**Minicap Setup:**
+- Minicap files are automatically pushed to devices
+- Automatic device detection and configuration
+- Graceful fallback to screencap if minicap setup fails
 
 ### Basic Usage
 
@@ -58,6 +79,9 @@ python main.py umamusume --verbose --instances 1 --speed 1.0
 
 # Short form verbose flag
 python main.py umamusume -v --device emulator-5554
+
+# Test minicap integration
+python test_minicap.py
 ```
 
 ### Command Line Options

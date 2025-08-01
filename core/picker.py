@@ -5,6 +5,7 @@ import subprocess
 import sys
 import os
 from pathlib import Path
+from .minicap_manager import MinicapManager
 
 rectangles = []
 slot_index = 1
@@ -22,12 +23,34 @@ def get_first_device():
         raise Exception(f"Failed to get ADB devices: {e}")
 
 def get_screenshot():
-    """Get screenshot from first ADB device using adb exec-out"""
+    """Get screenshot from first ADB device using minicap"""
     device_id = get_first_device()
     print(f"📱 Taking screenshot from device: {device_id}")
     
     try:
-        # Use adb to get a screenshot from specific device
+        # Try minicap first
+        minicap_manager = MinicapManager()
+        
+        # Setup and start minicap
+        if minicap_manager.setup_minicap(device_id):
+            if minicap_manager.start_minicap(device_id):
+                # Get screenshot via minicap
+                image_data = minicap_manager.get_screenshot(device_id)
+                if image_data:
+                    # Convert binary PNG data to a NumPy array
+                    image_array = np.frombuffer(image_data, dtype=np.uint8)
+                    
+                    # Decode the image
+                    img = cv2.imdecode(image_array, cv2.IMREAD_COLOR)
+                    if img is not None:
+                        print(f"✅ Screenshot captured using minicap")
+                        return img
+                
+                # Cleanup minicap
+                minicap_manager.stop_minicap(device_id)
+        
+        # Fallback to screencap if minicap fails
+        print(f"⚠️ Minicap failed, falling back to screencap")
         result = subprocess.run([
             "adb", "-s", device_id, "exec-out", "screencap", "-p"
         ], stdout=subprocess.PIPE, check=True)

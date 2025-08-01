@@ -5,6 +5,7 @@ Device Manager for handling ADB connections and device management
 import subprocess
 import time
 from typing import List, Optional
+from .minicap_manager import MinicapManager
 
 
 class DeviceManager:
@@ -13,6 +14,7 @@ class DeviceManager:
     def __init__(self):
         self.device_list = []
         self.initialized = False
+        self.minicap_managers = {}  # Store minicap managers per device
     
     def initialize(self) -> bool:
         """Initialize ADB and detect connected devices"""
@@ -67,22 +69,73 @@ class DeviceManager:
         except Exception:
             return False
     
+    def _get_minicap_manager(self, device_id: str) -> MinicapManager:
+        """Get or create minicap manager for device"""
+        if device_id not in self.minicap_managers:
+            self.minicap_managers[device_id] = MinicapManager()
+        return self.minicap_managers[device_id]
+    
     def get_screenshot(self, device_id: str) -> Optional[bytes]:
-        """Get screenshot from specific device"""
+        """Get screenshot from specific device using minicap"""
         try:
-            result = subprocess.run([
-                'adb', '-s', device_id, 'exec-out', 'screencap', '-p'
-            ], capture_output=True, timeout=10)
+            minicap_manager = self._get_minicap_manager(device_id)
             
-            if result.returncode == 0 and result.stdout:
-                return result.stdout
+            # Try to get screenshot using minicap
+            screenshot_data = minicap_manager.get_screenshot(device_id)
+            
+            if screenshot_data:
+                return screenshot_data
             else:
-                print(f"❌ Failed to get screenshot from device {device_id}")
-                return None
+                # Fallback to screencap if minicap fails
+                print(f"⚠️ Minicap failed for {device_id}, falling back to screencap")
+                result = subprocess.run([
+                    'adb', '-s', device_id, 'exec-out', 'screencap', '-p'
+                ], capture_output=True, timeout=10)
+                
+                if result.returncode == 0 and result.stdout:
+                    return result.stdout
+                else:
+                    print(f"❌ Failed to get screenshot from device {device_id}")
+                    return None
                 
         except Exception as e:
             print(f"❌ Error getting screenshot from {device_id}: {e}")
             return None
+    
+    def setup_minicap_for_device(self, device_id: str) -> bool:
+        """Setup minicap for a specific device"""
+        try:
+            minicap_manager = self._get_minicap_manager(device_id)
+            return minicap_manager.setup_minicap(device_id)
+        except Exception as e:
+            print(f"❌ Error setting up minicap for {device_id}: {e}")
+            return False
+    
+    def start_minicap_for_device(self, device_id: str) -> bool:
+        """Start minicap service for a specific device"""
+        try:
+            minicap_manager = self._get_minicap_manager(device_id)
+            return minicap_manager.start_minicap(device_id)
+        except Exception as e:
+            print(f"❌ Error starting minicap for {device_id}: {e}")
+            return False
+    
+    def stop_minicap_for_device(self, device_id: str):
+        """Stop minicap service for a specific device"""
+        try:
+            if device_id in self.minicap_managers:
+                self.minicap_managers[device_id].stop_minicap(device_id)
+        except Exception as e:
+            print(f"❌ Error stopping minicap for {device_id}: {e}")
+    
+    def cleanup_minicap_for_device(self, device_id: str):
+        """Cleanup minicap for a specific device"""
+        try:
+            if device_id in self.minicap_managers:
+                self.minicap_managers[device_id].cleanup(device_id)
+                del self.minicap_managers[device_id]
+        except Exception as e:
+            print(f"❌ Error cleaning up minicap for {device_id}: {e}")
     
     def execute_adb_command(self, device_id: str, command: List[str], timeout: int = 10) -> Optional[subprocess.CompletedProcess]:
         """Execute ADB command on specific device"""
