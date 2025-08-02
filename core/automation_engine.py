@@ -882,14 +882,14 @@ class AutomationInstance:
         self.start_background_timeout_checker()
         
         # Restart app for clean state
-        # if not self.device_manager.restart_app(
-        #     self.device_id, 
-        #     self.game.get_app_package(), 
-        #     self.game.get_app_activity()
-        # ):
-        #     print(f"❌ Instance #{self.instance_number}: Failed to restart app")
-        #     self.stop_background_timeout_checker()
-        #     return False
+        if not self.device_manager.restart_app(
+            self.device_id, 
+            self.game.get_app_package(), 
+            self.game.get_app_activity()
+        ):
+            print(f"❌ Instance #{self.instance_number}: Failed to restart app")
+            self.stop_background_timeout_checker()
+            return False
         
         # Get automation states from game
         automation_states = self.game.get_automation_states()
