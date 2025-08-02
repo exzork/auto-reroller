@@ -361,6 +361,26 @@ class UmamusumeFpGame(BaseGame):
                         delay_after=2.0
                     ),
                     create_tap_action(
+                        template="auto select",
+                        likelihood=0.9,
+                        delay_after=2.0
+                    ),
+                    create_tap_action(
+                        template="ok",
+                        likelihood=0.9,
+                        delay_after=2.0
+                    ),
+                    create_tap_action(
+                        template="add support",
+                        likelihood=0.9,
+                        delay_after=2.0
+                    ),
+                    create_tap_action(
+                        template="remove support card",
+                        likelihood=0.9,
+                        delay_after=2.0
+                    ),
+                    create_tap_action(
                         template="add support",
                         likelihood=0.9,
                         delay_after=2.0
