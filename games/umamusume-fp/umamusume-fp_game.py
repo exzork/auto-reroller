@@ -13,7 +13,7 @@ from typing import Dict, Any, List, Tuple, Optional
 from pathlib import Path
 from games.base_game import BaseGame
 from core.action_types import (
-    create_counter_action, create_loop_action, create_macro_action, create_restart_action, create_state_with_if_condition, create_tap_action, create_wait_action, create_typing_action,
+    create_counter_action, create_loop_action, create_macro_action, create_restart_action, create_state_with_if_condition, create_swipe_action, create_tap_action, create_wait_action, create_typing_action,
     ActionConfig, StateConfig, create_conditional_action
 )
 
@@ -361,12 +361,24 @@ class UmamusumeFpGame(BaseGame):
                         delay_after=2.0
                     ),
                     create_tap_action(
-                        template="auto select",
+                        template="add support",
                         likelihood=0.9,
                         delay_after=2.0
                     ),
+                    create_loop_action(
+                        actions=[
+                            create_swipe_action(
+                                start_coordinates=(270, 400),
+                                end_coordinates=(270, 200),
+                                duration=1000,
+                                delay_after=2.0
+                            )
+                        ],
+                        condition="following",
+                        timeout=20
+                    ),
                     create_tap_action(
-                        template="ok",
+                        template="following",
                         likelihood=0.9,
                         delay_after=2.0
                     ),
@@ -682,37 +694,6 @@ class UmamusumeFpGame(BaseGame):
                 "timeout": 600,
                 "templates": [],
                 "actions": [
-                    create_conditional_action(
-                        condition="next",
-                        if_true=[
-                            create_tap_action(
-                                template="next",
-                                likelihood=0.9,
-                                delay_after=5.0
-                            ),
-                            create_tap_action(
-                                template="next",
-                                likelihood=0.9,
-                                delay_after=2.0
-                            ),
-                            create_tap_action(
-                                template="abandon menu",
-                                likelihood=0.9,
-                                delay_after=2.0
-                            ),
-                            create_tap_action(
-                                template="give up",
-                                likelihood=0.9,
-                                delay_after=2.0
-                            ),
-                            create_tap_action(
-                                template="give up 2",
-                                likelihood=0.9,
-                                delay_after=5.0
-                            )
-                        ],
-                        timeout=10,
-                    ),
                     create_tap_action(
                         template="career",
                         likelihood=0.9,
@@ -745,12 +726,24 @@ class UmamusumeFpGame(BaseGame):
                         delay_after=2.0
                     ),
                     create_tap_action(
-                        template="auto select",
+                        template="add support",
                         likelihood=0.9,
                         delay_after=2.0
                     ),
+                    create_loop_action(
+                        actions=[
+                            create_swipe_action(
+                                start_coordinates=(270, 400),
+                                end_coordinates=(270, 200),
+                                duration=1000,
+                                delay_after=2.0
+                            )
+                        ],
+                        condition="following",
+                        timeout=20
+                    ),
                     create_tap_action(
-                        template="ok",
+                        template="following",
                         likelihood=0.9,
                         delay_after=2.0
                     ),

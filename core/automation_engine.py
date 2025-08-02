@@ -390,11 +390,20 @@ class AutomationInstance:
                 time.sleep(delay_before)
             
             # Execute swipe (this would need to be implemented in device_manager)
+            # Extract coordinates from tuples or use defaults
+            if start_coordinates:
+                start_x, start_y = start_coordinates
+            else:
+                start_x, start_y = 0, 0
+                
+            if end_coordinates:
+                end_x, end_y = end_coordinates
+            else:
+                end_x, end_y = 100, 100
+            
             success = self.device_manager.swipe(
                 self.device_id, 
-                start_coordinates or (0, 0), 
-                end_coordinates or (100, 100), 
-                duration
+                start_x, start_y, end_x, end_y, duration
             )
             
             if delay_after:
@@ -873,21 +882,21 @@ class AutomationInstance:
         self.start_background_timeout_checker()
         
         # Restart app for clean state
-        if not self.device_manager.restart_app(
-            self.device_id, 
-            self.game.get_app_package(), 
-            self.game.get_app_activity()
-        ):
-            print(f"❌ Instance #{self.instance_number}: Failed to restart app")
-            self.stop_background_timeout_checker()
-            return False
+        # if not self.device_manager.restart_app(
+        #     self.device_id, 
+        #     self.game.get_app_package(), 
+        #     self.game.get_app_activity()
+        # ):
+        #     print(f"❌ Instance #{self.instance_number}: Failed to restart app")
+        #     self.stop_background_timeout_checker()
+        #     return False
         
         # Get automation states from game
         automation_states = self.game.get_automation_states()
         
         # Track last detection time to avoid repeated processing
         last_detection_time = 0
-        detection_cooldown = 2 * self.macro_executor.speed_multiplier  # Scale cooldown with speed
+        detection_cooldown = 0 * self.macro_executor.speed_multiplier  # Scale cooldown with speed
         
         try:
             while self.running:
