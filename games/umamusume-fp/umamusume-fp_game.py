@@ -1088,15 +1088,15 @@ class UmamusumeFpGame(BaseGame):
                         condition="home_screen",
                         timeout=20
                     ),
-                    create_tap_action(
-                        template="career",
-                        likelihood=0.9,
-                        delay_after=2.0,
-                        timeout=30
-                    ),
                     create_conditional_action(
-                        condition="delete career",
+                        condition="continue career",
                         if_true=[
+                            create_tap_action(
+                                template="continue career",
+                                likelihood=0.9,
+                                delay_after=2.0,
+                                timeout=5
+                            ),
                             create_tap_action(
                                 template="delete career",
                                 likelihood=0.9,
@@ -1118,11 +1118,11 @@ class UmamusumeFpGame(BaseGame):
                         ],
                         if_false=[
                             create_tap_action(
-                                template="home_screen",
-                                likelihood=0.9,
+                                template="career",
+                                likelihood=0.7,
                                 delay_after=2.0,
-                                timeout=5
-                            )
+                                timeout=30
+                            ),
                         ]
                     )
                 ],
