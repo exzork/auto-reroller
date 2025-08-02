@@ -1,8 +1,8 @@
-📊 STATUS (1 instances) - 2025-08-02 09:47:32
+📊 STATUS (1 instances) - 2025-08-02 10:33:17
 🎮 Game: Uma Musume Friend Point Spam
 ⏱️  Runtime: 0.0 hours
 🔄 Total sessions: 0
 ⚡ Speed: 0.0 sessions/hour
 🔢 Counter: 0
 
-   Instance #1: 0 sessions, Score: 0, State: start career (30s)
+   Instance #1: 0 sessions, Score: 0, State: restart career (10s)

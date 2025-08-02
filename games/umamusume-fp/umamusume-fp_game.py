@@ -1088,6 +1088,43 @@ class UmamusumeFpGame(BaseGame):
                         condition="home_screen",
                         timeout=20
                     ),
+                    create_tap_action(
+                        template="career",
+                        likelihood=0.9,
+                        delay_after=2.0,
+                        timeout=30
+                    ),
+                    create_conditional_action(
+                        condition="delete career",
+                        if_true=[
+                            create_tap_action(
+                                template="delete career",
+                                likelihood=0.9,
+                                delay_after=2.0,
+                                timeout=5
+                            ),
+                            create_tap_action(
+                                template="ok",
+                                likelihood=0.9,
+                                delay_after=2.0,
+                                timeout=5
+                            ),
+                            create_tap_action(
+                                template="close",
+                                likelihood=0.9,
+                                delay_after=2.0,
+                                timeout=5
+                            )
+                        ],
+                        if_false=[
+                            create_tap_action(
+                                template="home_screen",
+                                likelihood=0.9,
+                                delay_after=2.0,
+                                timeout=5
+                            )
+                        ]
+                    )
                 ],
                 "next_states": ["start career"]
             },
