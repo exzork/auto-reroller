@@ -371,38 +371,6 @@ class UmamusumeFpGame(BaseGame):
                         delay_after=2.0
                     ),
                     create_tap_action(
-                        template="add support",
-                        likelihood=0.9,
-                        delay_after=2.0
-                    ),
-                    create_tap_action(
-                        template="remove support card",
-                        likelihood=0.9,
-                        delay_after=2.0
-                    ),
-                    create_tap_action(
-                        template="add support",
-                        likelihood=0.9,
-                        delay_after=2.0
-                    ),
-                    create_loop_action(
-                        actions=[
-                            create_swipe_action(
-                                start_coordinates=(270, 400),
-                                end_coordinates=(270, 200),
-                                duration=1000,
-                                delay_after=2.0
-                            )
-                        ],
-                        condition="following",
-                        timeout=20
-                    ),
-                    create_tap_action(
-                        template="following",
-                        likelihood=0.9,
-                        delay_after=2.0
-                    ),
-                    create_tap_action(
                         template="start career",
                         likelihood=0.9,
                         delay_after=2.0
