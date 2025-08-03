@@ -71,6 +71,8 @@ class AutomationInstance:
     
     def _timeout_checker_loop(self):
         """Background loop to check for timeouts"""
+        print(f"🔍 Instance #{self.instance_number}: Timeout checker thread started")
+        
         while self.running:
             try:
                 if self.check_state_timeout():
@@ -85,7 +87,11 @@ class AutomationInstance:
                 time.sleep(5)  # Check every 5 seconds
             except Exception as e:
                 print(f"❌ Instance #{self.instance_number}: Error in timeout checker: {e}")
+                import traceback
+                traceback.print_exc()
                 break
+        
+        print(f"🔍 Instance #{self.instance_number}: Timeout checker thread stopped")
     
     def check_state_timeout(self) -> bool:
         """Check if current state has been running too long"""
@@ -104,8 +110,12 @@ class AutomationInstance:
         # Adjust timeout based on macro speed multiplier
         adjusted_timeout = base_timeout * self.macro_executor.speed_multiplier
         
+        # Debug logging every 30 seconds
+        if int(time_in_state) % 30 == 0 and time_in_state > 0:
+            print(f"🔍 Instance #{self.instance_number}: Timeout check - State: {current_state}, Time: {time_in_state:.1f}s, Limit: {adjusted_timeout:.1f}s")
+        
         if time_in_state > adjusted_timeout:
-            print(f"⏰ Instance #{self.instance_number}: TIMEOUT! State '{current_state}' stuck for {time_in_state:.1f}s")
+            print(f"⏰ Instance #{self.instance_number}: TIMEOUT! State '{current_state}' stuck for {time_in_state:.1f}s (limit: {adjusted_timeout:.1f}s)")
             return True
         return False
     
