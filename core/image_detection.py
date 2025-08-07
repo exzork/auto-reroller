@@ -16,6 +16,8 @@ class ImageDetector:
         self.project_root = Path(__file__).parent.parent
         # Store detected template coordinates
         self.detected_coordinates = {}
+        # Cache for template paths to avoid repeated file system operations
+        self.template_path_cache = {}
     
     def detect_template(self, screenshot: np.ndarray, template_path: str, 
                        threshold: float = 0.8) -> bool:
@@ -164,33 +166,45 @@ class ImageDetector:
     
     def get_template_path(self, game_name: str, template_name: str) -> Optional[Path]:
         """Get the full path to a game-specific template image"""
+        # Check cache first
+        cache_key = f"{game_name}:{template_name}"
+        if cache_key in self.template_path_cache:
+            return self.template_path_cache[cache_key]
+        
         # Try game-specific template first
         game_template_path = self.project_root / "games" / game_name / "templates" / f"{template_name}.png"
         if game_template_path.exists():
+            self.template_path_cache[cache_key] = game_template_path
             return game_template_path
         
         # Try with different extensions
         for ext in ['.jpg', '.jpeg']:
             game_template_path = self.project_root / "games" / game_name / "templates" / f"{template_name}{ext}"
             if game_template_path.exists():
+                self.template_path_cache[cache_key] = game_template_path
                 return game_template_path
         
         # Fall back to global template directory
         global_template_path = self.project_root / "templates" / f"{template_name}.png"
         if global_template_path.exists():
+            self.template_path_cache[cache_key] = global_template_path
             return global_template_path
         
         # Try global with different extensions
         for ext in ['.jpg', '.jpeg']:
             global_template_path = self.project_root / "templates" / f"{template_name}{ext}"
             if global_template_path.exists():
+                self.template_path_cache[cache_key] = global_template_path
                 return global_template_path
         
         # Legacy support - check old directory structure
         legacy_template_path = self.project_root / "step" / f"{template_name}.png"
         if legacy_template_path.exists():
+            self.template_path_cache[cache_key] = legacy_template_path
             return legacy_template_path
         
+        # Cache the None result to avoid repeated lookups
+        self.template_path_cache[cache_key] = None
         return None
     
     def detect_game_template(self, screenshot: np.ndarray, game_name: str, 

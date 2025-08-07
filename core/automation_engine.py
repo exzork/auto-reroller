@@ -6,6 +6,7 @@ Handles the core automation logic and state management
 import time
 import threading
 import msvcrt
+import numpy as np
 from typing import Dict, Any, List, Optional, Tuple
 from pathlib import Path
 
@@ -101,7 +102,7 @@ class AutomationInstance:
         # Get timeout for current state
         state_timeouts = self.game.get_state_timeouts()
         current_state = self.instance_data['current_state']
-        base_timeout = state_timeouts.get(current_state, 240)  # Default 4 minutes
+        base_timeout = state_timeouts.get(current_state, None)  # Default 4 minutes
         
         # If timeout is None or 0, this state has no timeout (runs indefinitely)
         if base_timeout is None or base_timeout <= 0:
@@ -188,7 +189,7 @@ class AutomationInstance:
             print(f"❌ Instance #{self.instance_number}: Error handling timeout: {e}")
             return False
     
-    def get_screenshot(self):
+    def get_screenshot(self, save_to_file: bool = False):
         """Get screenshot for this device using streaming if available, otherwise file-based"""
         if self.verbose:
             print(f"📸 Instance #{self.instance_number}: Capturing screenshot")
@@ -205,7 +206,7 @@ class AutomationInstance:
                 print(f"⚠️ Instance #{self.instance_number}: Streaming frame failed, falling back to file-based")
         
         # Fallback to file-based screenshot
-        screenshot_bytes = self.device_manager.get_screenshot(self.device_id)
+        screenshot_bytes = self.device_manager.get_screenshot(self.device_id, save_to_file)
         if screenshot_bytes:
             screenshot = self.image_detector.bytes_to_image(screenshot_bytes)
             if self.verbose and screenshot is not None:
@@ -234,35 +235,85 @@ class AutomationInstance:
         
         return success
     
-    def execute_tap(self, template_name: str) -> bool:
-        """Execute a tap at the saved coordinates for a detected template"""
-        coordinates = self.image_detector.get_detected_coordinates(template_name)
+    def execute_tap(self, template_name: str, offset_x: Optional[int] = None, offset_y: Optional[int] = None, coordinates: Optional[tuple[int, int]] = None, tap_times: Optional[int] = None, tap_delay: Optional[float] = None, screenshot: Optional[np.ndarray] = None) -> bool:
+        """Execute a tap at the saved coordinates for a detected template, with optional offset from center, or at explicit coordinates"""
         
-        # If coordinates not found, try to detect the template first
-        if coordinates is None:
-            if self.verbose:
-                print(f"🔍 Instance #{self.instance_number}: No saved coordinates for template '{template_name}', scanning screenshot...")
-            
-            # Use stored screenshot if available (for single screenshot loops)
+        tap_start_time = time.time()
+        print(f"👆 Instance #{self.instance_number}: Starting tap execution for '{template_name}'")
+        
+        # Use provided screenshot or get a new one
+        if screenshot is None:
             screenshot = getattr(self, '_current_screenshot', None)
             if screenshot is None:
                 screenshot = self.get_screenshot()
+        
+        if screenshot is None:
+            if self.verbose:
+                print(f"❌ Instance #{self.instance_number}: Failed to get screenshot for template detection")
+            return False
+        
+        # Detect the template for validation
+        template_detect_start = time.time()
+        if not self.detect_template(screenshot, template_name):
+            if self.verbose:
+                print(f"❌ Instance #{self.instance_number}: Template '{template_name}' not found in screenshot")
+            return False
+        
+        template_detect_time = (time.time() - template_detect_start) * 1000
+        print(f"⏱️ Instance #{self.instance_number}: Template detection for tap took {template_detect_time:.1f}ms")
+        
+        if self.verbose:
+            print(f"✅ Instance #{self.instance_number}: Template '{template_name}' found, proceeding with tap")
+        
+        # If explicit coordinates are provided, use them directly
+        if coordinates is not None:
+            x, y = coordinates
             
-            if screenshot is None:
-                if self.verbose:
-                    print(f"❌ Instance #{self.instance_number}: Failed to get screenshot for template detection")
-                return False
+            # Apply offsets if specified
+            if offset_x is not None:
+                x += offset_x
+            if offset_y is not None:
+                y += offset_y
             
-            # Detect the template in the current screenshot
-            if self.detect_template(screenshot, template_name):
-                # Get the coordinates from the fresh detection
-                coordinates = self.image_detector.get_detected_coordinates(template_name)
-                if self.verbose:
-                    print(f"✅ Instance #{self.instance_number}: Template '{template_name}' detected in current screenshot")
-            else:
-                if self.verbose:
-                    print(f"❌ Instance #{self.instance_number}: Template '{template_name}' not found in current screenshot")
-                return False
+            if self.verbose:
+                offset_info = ""
+                if offset_x is not None or offset_y is not None:
+                    offset_info = f" (with offset: x={offset_x or 0}, y={offset_y or 0})"
+                print(f"👆 Instance #{self.instance_number}: Executing tap at explicit coordinates ({x}, {y}){offset_info}")
+            
+            # Execute multiple taps if specified
+            tap_count = tap_times or 1
+            tap_delay_seconds = tap_delay or 0.1
+            
+            if self.verbose and tap_count > 1:
+                print(f"👆 Instance #{self.instance_number}: Executing {tap_count} taps with {tap_delay_seconds}s delay")
+            
+            success = True
+            for i in range(tap_count):
+                if i > 0:  # Don't delay before first tap
+                    time.sleep(tap_delay_seconds)
+                
+                tap_success = self.device_manager.tap(self.device_id, x, y)
+                if not tap_success:
+                    success = False
+                    if self.verbose:
+                        print(f"❌ Instance #{self.instance_number}: Tap {i+1}/{tap_count} failed")
+                    break
+                elif self.verbose and tap_count > 1:
+                    print(f"✅ Instance #{self.instance_number}: Tap {i+1}/{tap_count} executed successfully")
+            
+            if self.verbose:
+                if success:
+                    print(f"✅ Instance #{self.instance_number}: All {tap_count} taps executed successfully")
+                else:
+                    print(f"❌ Instance #{self.instance_number}: Tap execution failed")
+            
+            tap_total_time = (time.time() - tap_start_time) * 1000
+            print(f"⏱️ Instance #{self.instance_number}: Total tap execution took {tap_total_time:.1f}ms")
+            return success
+        
+        # Otherwise, use template matching to find coordinates
+        coordinates = self.image_detector.get_detected_coordinates(template_name)
         
         if coordinates is None:
             if self.verbose:
@@ -270,20 +321,51 @@ class AutomationInstance:
             return False
         
         x, y = coordinates
-        if self.verbose:
-            print(f"👆 Instance #{self.instance_number}: Executing tap at ({x}, {y}) for template '{template_name}'")
         
-        success = self.device_manager.tap(self.device_id, x, y)
+        # Apply offsets if specified
+        if offset_x is not None:
+            x += offset_x
+        if offset_y is not None:
+            y += offset_y
+        
+        if self.verbose:
+            offset_info = ""
+            if offset_x is not None or offset_y is not None:
+                offset_info = f" (with offset: x={offset_x or 0}, y={offset_y or 0})"
+            print(f"👆 Instance #{self.instance_number}: Executing tap at ({x}, {y}) for template '{template_name}'{offset_info}")
+        
+        # Execute multiple taps if specified
+        tap_count = tap_times or 1
+        tap_delay_seconds = tap_delay or 0.1
+        
+        if self.verbose and tap_count > 1:
+            print(f"👆 Instance #{self.instance_number}: Executing {tap_count} taps with {tap_delay_seconds}s delay")
+        
+        success = True
+        for i in range(tap_count):
+            if i > 0:  # Don't delay before first tap
+                time.sleep(tap_delay_seconds)
+            
+            tap_success = self.device_manager.tap(self.device_id, x, y)
+            if not tap_success:
+                success = False
+                if self.verbose:
+                    print(f"❌ Instance #{self.instance_number}: Tap {i+1}/{tap_count} failed")
+                break
+            elif self.verbose and tap_count > 1:
+                print(f"✅ Instance #{self.instance_number}: Tap {i+1}/{tap_count} executed successfully")
         
         if self.verbose:
             if success:
-                print(f"✅ Instance #{self.instance_number}: Tap executed successfully")
+                print(f"✅ Instance #{self.instance_number}: All {tap_count} taps executed successfully")
             else:
                 print(f"❌ Instance #{self.instance_number}: Tap execution failed")
         
+        tap_total_time = (time.time() - tap_start_time) * 1000
+        print(f"⏱️ Instance #{self.instance_number}: Total tap execution took {tap_total_time:.1f}ms")
         return success
     
-    def execute_action(self, action_config: Dict[str, Any]) -> bool:
+    def execute_action(self, action_config: Dict[str, Any], screenshot: Optional[np.ndarray] = None) -> bool:
         """Execute an action based on the action configuration"""
         # Validate action configuration
         validation_errors = validate_action_config(action_config)
@@ -310,12 +392,20 @@ class AutomationInstance:
             return self.execute_macro(macro_name)
             
         elif action_type == ActionType.TAP:
+            tap_action_start = time.time()
+            if self.verbose:
+                print(f"👆 Instance #{self.instance_number}: Starting TAP action execution")
+            
             template_name = action_config.get('template')
             coordinates = action_config.get('coordinates')
             delay_before = action_config.get('delay_before')
             delay_after = action_config.get('delay_after')
             likelihood = action_config.get('likelihood')
             timeout = action_config.get('timeout')
+            offset_x = action_config.get('offset_x')
+            offset_y = action_config.get('offset_y')
+            tap_times = action_config.get('tap_times')
+            tap_delay = action_config.get('tap_delay')
             
             if self.verbose:
                 print(f"👆 Instance #{self.instance_number}: Executing tap action")
@@ -330,27 +420,42 @@ class AutomationInstance:
                     print(f"   🎯 Likelihood: {likelihood}")
                 if timeout:
                     print(f"   ⏱️ Timeout: {timeout}s")
+                if offset_x is not None or offset_y is not None:
+                    print(f"   📍 Offset: x={offset_x or 0}, y={offset_y or 0}")
+                if tap_times and tap_times > 1:
+                    print(f"   👆 Tap times: {tap_times}")
+                if tap_delay:
+                    print(f"   ⏱️ Tap delay: {tap_delay}s")
             
             # Apply delays if specified
             if delay_before:
+                delay_before_start = time.time()
+                if self.verbose:
+                    print(f"⏱️ Instance #{self.instance_number}: Applying delay_before: {delay_before}s")
                 time.sleep(delay_before)
+                delay_before_time = (time.time() - delay_before_start) * 1000
+                if self.verbose:
+                    print(f"⏱️ Instance #{self.instance_number}: delay_before took {delay_before_time:.1f}ms")
             
             # Execute tap with timeout handling
+            tap_exec_start = time.time()
             if timeout is not None:
+                if self.verbose:
+                    print(f"⏱️ Instance #{self.instance_number}: Executing tap with timeout: {timeout}s")
                 # Try to execute tap with timeout
                 tap_start_time = time.time()
                 while time.time() - tap_start_time < timeout:
                     # Execute tap with custom likelihood if specified
                     if likelihood is not None:
-                        success = self.execute_tap_with_likelihood(template_name, likelihood)
+                        success = self.execute_tap_with_likelihood(template_name, likelihood, offset_x, offset_y, coordinates, tap_times, tap_delay, screenshot)
                     else:
-                        success = self.execute_tap(template_name)
+                        success = self.execute_tap(template_name, offset_x, offset_y, coordinates, tap_times, tap_delay, screenshot)
                     
                     if success:
                         break
                     
-                    # Brief pause before retry
-                    time.sleep(0.5)
+                    # No delay - retry immediately for faster response
+                    # time.sleep(0.5)  # Removed delay for faster retry
                 else:
                     # Tap timeout reached, log and continue (don't fail the action)
                     if self.verbose:
@@ -359,12 +464,26 @@ class AutomationInstance:
             else:
                 # Execute tap without timeout (original behavior)
                 if likelihood is not None:
-                    success = self.execute_tap_with_likelihood(template_name, likelihood)
+                    success = self.execute_tap_with_likelihood(template_name, likelihood, offset_x, offset_y, coordinates, tap_times, tap_delay, screenshot)
                 else:
-                    success = self.execute_tap(template_name)
+                    success = self.execute_tap(template_name, offset_x, offset_y, coordinates, tap_times, tap_delay, screenshot)
+            
+            tap_exec_time = (time.time() - tap_exec_start) * 1000
+            if self.verbose:
+                print(f"⏱️ Instance #{self.instance_number}: Tap execution took {tap_exec_time:.1f}ms")
             
             if delay_after:
+                delay_after_start = time.time()
+                if self.verbose:
+                    print(f"⏱️ Instance #{self.instance_number}: Applying delay_after: {delay_after}s")
                 time.sleep(delay_after)
+                delay_after_time = (time.time() - delay_after_start) * 1000
+                if self.verbose:
+                    print(f"⏱️ Instance #{self.instance_number}: delay_after took {delay_after_time:.1f}ms")
+            
+            tap_action_total = (time.time() - tap_action_start) * 1000
+            if self.verbose:
+                print(f"⏱️ Instance #{self.instance_number}: Total TAP action took {tap_action_total:.1f}ms")
             
             return success
             
@@ -441,15 +560,16 @@ class AutomationInstance:
                 # Wait for specific template
                 start_time = time.time()
                 while time.time() - start_time < (timeout or 60):
-                    screenshot = self.get_screenshot()
-                    if screenshot is not None:
+                    # Use provided screenshot or get a new one
+                    check_screenshot = screenshot if screenshot is not None else self.get_screenshot()
+                    if check_screenshot is not None:
                         if likelihood is not None:
-                            detected = self.detect_template_with_likelihood(screenshot, condition, likelihood)
+                            detected = self.detect_template_with_likelihood(check_screenshot, condition, likelihood)
                         else:
-                            detected = self.detect_template(screenshot, condition)
+                            detected = self.detect_template(check_screenshot, condition)
                         if detected:
                             return True
-                    time.sleep(0.5)
+                    # time.sleep(0.5)
                 return False
             else:
                 # Simple wait
@@ -466,13 +586,14 @@ class AutomationInstance:
                     print(f"   💾 Save path: {save_path}")
                 print(f"   🔍 Process items: {process_items}")
             
-            screenshot = self.get_screenshot()
-            if screenshot is not None:
+            # Use provided screenshot or get a new one
+            action_screenshot = screenshot if screenshot is not None else self.get_screenshot()
+            if action_screenshot is not None:
                 if save_path:
                     # Save screenshot (implementation needed)
                     pass
                 if process_items:
-                    self.process_screenshot_for_items(screenshot)
+                    self.process_screenshot_for_items(action_screenshot)
                 return True
             return False
             
@@ -555,12 +676,13 @@ class AutomationInstance:
                     print(f"   🎯 If false state: {if_false_state}")
             
             # Check condition
-            screenshot = self.get_screenshot()
-            if screenshot is not None:
+            # Use provided screenshot or get a new one
+            check_screenshot = screenshot if screenshot is not None else self.get_screenshot()
+            if check_screenshot is not None:
                 if likelihood is not None:
-                    condition_met = self.detect_template_with_likelihood(screenshot, condition, likelihood)
+                    condition_met = self.detect_template_with_likelihood(check_screenshot, condition, likelihood)
                 else:
-                    condition_met = self.detect_template(screenshot, condition)
+                    condition_met = self.detect_template(check_screenshot, condition)
                 
                 actions_to_execute = if_true if condition_met else if_false
                 target_state = if_true_state if condition_met else if_false_state
@@ -573,7 +695,7 @@ class AutomationInstance:
                 
                 # Execute actions
                 for action in actions_to_execute:
-                    if not self.execute_action(action):
+                    if not self.execute_action(action, check_screenshot):
                         print(f"❌ Instance #{self.instance_number}: Failed to execute action in conditional")
                         return False
                 
@@ -679,7 +801,7 @@ class AutomationInstance:
                         self._current_screenshot = loop_screenshot
                         
                         try:
-                            if not self.execute_action(action):
+                            if not self.execute_action(action, loop_screenshot):
                                 print(f"❌ Instance #{self.instance_number}: Failed to execute action in loop iteration {iteration + 1}")
                                 return False
                         finally:
@@ -690,7 +812,7 @@ class AutomationInstance:
                                 delattr(self, '_current_screenshot')
                     else:
                         # Normal action execution
-                        if not self.execute_action(action):
+                        if not self.execute_action(action, loop_screenshot):
                             print(f"❌ Instance #{self.instance_number}: Failed to execute action in loop iteration {iteration + 1}")
                             return False
                 
@@ -779,70 +901,143 @@ class AutomationInstance:
     
     def detect_template(self, screenshot, template_name: str) -> bool:
         """Detect a template in the screenshot"""
-        if self.verbose:
-            print(f"🔍 Instance #{self.instance_number}: Detecting template: {template_name}")
+        import time
+        start_time = time.time()
         
         threshold = self.game.get_template_threshold(template_name)
         detected = self.image_detector.detect_game_template(
             screenshot, self.game.get_game_name(), template_name, threshold
         )
         
-        if self.verbose:
-            if detected:
-                print(f"✅ Instance #{self.instance_number}: Template '{template_name}' detected (threshold: {threshold})")
-            else:
-                print(f"❌ Instance #{self.instance_number}: Template '{template_name}' not found (threshold: {threshold})")
+        detection_time = (time.time() - start_time) * 1000  # Convert to milliseconds
+        print(f"🔍 Instance #{self.instance_number}: Template '{template_name}' {'✅' if detected else '❌'} in {detection_time:.1f}ms (threshold: {threshold})")
         
         return detected
     
     def detect_template_with_likelihood(self, screenshot, template_name: str, likelihood: float) -> bool:
         """Detect a template in the screenshot with custom likelihood threshold"""
-        if self.verbose:
-            print(f"🔍 Instance #{self.instance_number}: Detecting template: {template_name} (likelihood: {likelihood})")
+        import time
+        start_time = time.time()
         
         detected = self.image_detector.detect_game_template(
             screenshot, self.game.get_game_name(), template_name, likelihood
         )
         
-        if self.verbose:
-            if detected:
-                print(f"✅ Instance #{self.instance_number}: Template '{template_name}' detected (likelihood: {likelihood})")
-            else:
-                print(f"❌ Instance #{self.instance_number}: Template '{template_name}' not found (likelihood: {likelihood})")
+        detection_time = (time.time() - start_time) * 1000  # Convert to milliseconds
+        print(f"🔍 Instance #{self.instance_number}: Template '{template_name}' {'✅' if detected else '❌'} in {detection_time:.1f}ms (likelihood: {likelihood})")
         
         return detected
     
-    def execute_tap_with_likelihood(self, template_name: str, likelihood: float) -> bool:
-        """Execute a tap at the saved coordinates for a detected template with custom likelihood"""
-        # Use stored screenshot if available (for single screenshot loops)
-        screenshot = getattr(self, '_current_screenshot', None)
+    def execute_tap_with_likelihood(self, template_name: str, likelihood: float, offset_x: Optional[int] = None, offset_y: Optional[int] = None, coordinates: Optional[tuple[int, int]] = None, tap_times: Optional[int] = None, tap_delay: Optional[float] = None, screenshot: Optional[np.ndarray] = None) -> bool:
+        """Execute a tap at the saved coordinates for a detected template with custom likelihood and optional offset, or at explicit coordinates"""
+        
+        # Use provided screenshot or get a new one
         if screenshot is None:
-            screenshot = self.get_screenshot()
+            screenshot = getattr(self, '_current_screenshot', None)
+            if screenshot is None:
+                screenshot = self.get_screenshot()
         
         if screenshot is None:
-            print(f"❌ Instance #{self.instance_number}: Failed to get screenshot for tap")
+            print(f"❌ Instance #{self.instance_number}: Failed to get screenshot for template detection")
             return False
         
-        # Detect template with custom likelihood
+        # Detect template with custom likelihood for validation
         if not self.detect_template_with_likelihood(screenshot, template_name, likelihood):
             print(f"❌ Instance #{self.instance_number}: Template '{template_name}' not detected with likelihood {likelihood}")
             return False
         
-        # Get saved coordinates
+        if self.verbose:
+            print(f"✅ Instance #{self.instance_number}: Template '{template_name}' found with likelihood {likelihood}, proceeding with tap")
+        
+        # If explicit coordinates are provided, use them directly
+        if coordinates is not None:
+            x, y = coordinates
+            
+            # Apply offsets if specified
+            if offset_x is not None:
+                x += offset_x
+            if offset_y is not None:
+                y += offset_y
+            
+            if self.verbose:
+                offset_info = ""
+                if offset_x is not None or offset_y is not None:
+                    offset_info = f" (with offset: x={offset_x or 0}, y={offset_y or 0})"
+                print(f"👆 Instance #{self.instance_number}: Tapping at explicit coordinates ({x}, {y}){offset_info}")
+            
+            # Execute multiple taps if specified
+            tap_count = tap_times or 1
+            tap_delay_seconds = tap_delay or 0.1
+            
+            if self.verbose and tap_count > 1:
+                print(f"👆 Instance #{self.instance_number}: Executing {tap_count} taps with {tap_delay_seconds}s delay")
+            
+            success = True
+            for i in range(tap_count):
+                if i > 0:  # Don't delay before first tap
+                    time.sleep(tap_delay_seconds)
+                
+                tap_success = self.device_manager.tap(self.device_id, x, y)
+                if not tap_success:
+                    success = False
+                    if self.verbose:
+                        print(f"❌ Instance #{self.instance_number}: Tap {i+1}/{tap_count} failed")
+                    break
+                elif self.verbose and tap_count > 1:
+                    print(f"✅ Instance #{self.instance_number}: Tap {i+1}/{tap_count} executed successfully")
+            
+            if self.verbose:
+                if success:
+                    print(f"✅ Instance #{self.instance_number}: All {tap_count} taps executed successfully")
+                else:
+                    print(f"❌ Instance #{self.instance_number}: Tap execution failed")
+            
+            return success
+        
+        # Otherwise, use template matching to find coordinates
         coordinates = self.image_detector.get_detected_coordinates(template_name)
         if coordinates is None:
             print(f"❌ Instance #{self.instance_number}: No coordinates saved for template '{template_name}'")
             return False
         
         x, y = coordinates
-        if self.verbose:
-            print(f"👆 Instance #{self.instance_number}: Tapping at coordinates ({x}, {y}) for template '{template_name}'")
         
-        success = self.device_manager.tap(self.device_id, x, y)
+        # Apply offsets if specified
+        if offset_x is not None:
+            x += offset_x
+        if offset_y is not None:
+            y += offset_y
+        
+        if self.verbose:
+            offset_info = ""
+            if offset_x is not None or offset_y is not None:
+                offset_info = f" (with offset: x={offset_x or 0}, y={offset_y or 0})"
+            print(f"👆 Instance #{self.instance_number}: Tapping at coordinates ({x}, {y}) for template '{template_name}'{offset_info}")
+        
+        # Execute multiple taps if specified
+        tap_count = tap_times or 1
+        tap_delay_seconds = tap_delay or 0.1
+        
+        if self.verbose and tap_count > 1:
+            print(f"👆 Instance #{self.instance_number}: Executing {tap_count} taps with {tap_delay_seconds}s delay")
+        
+        success = True
+        for i in range(tap_count):
+            if i > 0:  # Don't delay before first tap
+                time.sleep(tap_delay_seconds)
+            
+            tap_success = self.device_manager.tap(self.device_id, x, y)
+            if not tap_success:
+                success = False
+                if self.verbose:
+                    print(f"❌ Instance #{self.instance_number}: Tap {i+1}/{tap_count} failed")
+                break
+            elif self.verbose and tap_count > 1:
+                print(f"✅ Instance #{self.instance_number}: Tap {i+1}/{tap_count} executed successfully")
         
         if self.verbose:
             if success:
-                print(f"✅ Instance #{self.instance_number}: Tap executed successfully")
+                print(f"✅ Instance #{self.instance_number}: All {tap_count} taps executed successfully")
             else:
                 print(f"❌ Instance #{self.instance_number}: Tap execution failed")
         
@@ -892,21 +1087,17 @@ class AutomationInstance:
         self.start_background_timeout_checker()
         
         # Restart app for clean state
-        if not self.device_manager.restart_app(
-            self.device_id, 
-            self.game.get_app_package(), 
-            self.game.get_app_activity()
-        ):
-            print(f"❌ Instance #{self.instance_number}: Failed to restart app")
-            self.stop_background_timeout_checker()
-            return False
+        # if not self.device_manager.restart_app(
+        #     self.device_id, 
+        #     self.game.get_app_package(), 
+        #     self.game.get_app_activity()
+        # ):
+        #     print(f"❌ Instance #{self.instance_number}: Failed to restart app")
+        #     self.stop_background_timeout_checker()
+        #     return False
         
         # Get automation states from game
         automation_states = self.game.get_automation_states()
-        
-        # Track last detection time to avoid repeated processing
-        last_detection_time = 0
-        detection_cooldown = 0 * self.macro_executor.speed_multiplier  # Scale cooldown with speed
         
         try:
             while self.running:
@@ -914,7 +1105,6 @@ class AutomationInstance:
                 
                 screenshot = self.get_screenshot()
                 if screenshot is None:
-                    time.sleep(0.5 * self.macro_executor.speed_multiplier)
                     continue
                 
                 current_state = self.instance_data['current_state']
@@ -926,7 +1116,7 @@ class AutomationInstance:
                 
                 state_config = automation_states[current_state]
                 
-                if self.verbose and current_time - last_detection_time > 30:  # Log current state every 30 seconds
+                if self.verbose and current_time - self.current_state_start_time > 30:  # Log current state every 30 seconds
                     time_in_state = current_time - self.current_state_start_time
                     print(f"🔄 Instance #{self.instance_number}: Current state: {current_state} ({time_in_state:.1f}s)")
                 
@@ -946,36 +1136,43 @@ class AutomationInstance:
                             print(f"✅ Instance #{self.instance_number}: Template '{template}' triggered state action")
                         break
                 
+                # Log timing after template detection
+                template_time = time.time()
+                if self.verbose:
+                    print(f"⏱️ Instance #{self.instance_number}: Template detection completed in {((template_time - current_time) * 1000):.1f}ms")
+                
                 # Determine if we should execute actions
                 # Execute if: (template detected) OR (state has actions/macros but no templates to detect)
                 should_execute_actions = (
-                    (template_detected and current_time - last_detection_time > detection_cooldown) or
-                    (not templates and (actions or macros) and current_time - last_detection_time > detection_cooldown)
+                    template_detected or
+                    (not templates and (actions or macros))
                 )
                 
                 # Special handling for "completed" state - trigger session completion
-                if current_state == 'completed' and current_time - last_detection_time > detection_cooldown:
+                if current_state == 'completed':
                     if self.verbose:
                         print(f"🏁 Instance #{self.instance_number}: Reached completed state, finishing session")
                     
                     # Complete the session (sends Discord notification and resets)
                     self.complete_session()
-                    last_detection_time = current_time
                     continue
                 
                 # Handle states with no templates and no actions (auto-transition)
-                if not templates and not actions and not macros and current_time - last_detection_time > detection_cooldown:
+                if not templates and not actions and not macros:
                     next_states = state_config.get('next_states', [])
                     if next_states:
                         next_state = next_states[0]
                         if self.verbose:
                             print(f"🔄 Instance #{self.instance_number}: Auto-transitioning from '{current_state}' to '{next_state}' (no actions required)")
                         self.change_state(next_state)
-                        last_detection_time = current_time
                     continue
                 
                 # Process state logic
                 if should_execute_actions:
+                    action_start_time = time.time()
+                    if self.verbose:
+                        print(f"🎬 Instance #{self.instance_number}: Starting action execution")
+                    
                     if self.verbose:
                         reason = "template detected" if template_detected else "no templates, executing actions"
                         print(f"🎬 Instance #{self.instance_number}: Processing state '{current_state}' actions ({reason})")
@@ -990,6 +1187,7 @@ class AutomationInstance:
                     if_likelihood = state_config.get('if_likelihood')
                     
                     if if_condition:
+                        condition_start_time = time.time()
                         if self.verbose:
                             print(f"🔀 Instance #{self.instance_number}: Checking if condition: {if_condition}")
                         
@@ -1001,6 +1199,10 @@ class AutomationInstance:
                             else:
                                 condition_met = self.detect_template(screenshot, if_condition)
                         
+                        condition_time = (time.time() - condition_start_time) * 1000
+                        if self.verbose:
+                            print(f"⏱️ Instance #{self.instance_number}: Condition check took {condition_time:.1f}ms")
+                        
                         if self.verbose:
                             print(f"   {'✅' if condition_met else '❌'} If condition '{if_condition}' {'met' if condition_met else 'not met'}")
                         
@@ -1011,27 +1213,34 @@ class AutomationInstance:
                         
                         # Execute conditional actions
                         for i, action in enumerate(actions_to_execute):
+                            action_exec_start = time.time()
                             if self.verbose:
                                 print(f"🎬 Instance #{self.instance_number}: Executing conditional action {i + 1}/{len(actions_to_execute)}")
                             
-                            if not self.execute_action(action):
+                            if not self.execute_action(action, screenshot):
                                 if self.verbose:
                                     print(f"❌ Instance #{self.instance_number}: Conditional action {i + 1} failed")
                                 action_success = False
                                 break
+                            
+                            action_exec_time = (time.time() - action_exec_start) * 1000
+                            if self.verbose:
+                                print(f"⏱️ Instance #{self.instance_number}: Conditional action {i + 1} took {action_exec_time:.1f}ms")
                     else:
                         # Handle regular actions (existing logic)
                         if actions:
+                            actions_start_time = time.time()
                             if self.verbose:
                                 print(f"🎬 Instance #{self.instance_number}: Executing {len(actions)} action(s) starting from index {self.current_action_index}")
                             
                             # Execute actions starting from the current index
                             for i in range(self.current_action_index, len(actions)):
                                 action = actions[i]
+                                action_exec_start = time.time()
                                 if self.verbose:
                                     print(f"🎬 Instance #{self.instance_number}: Executing action {i + 1}/{len(actions)}")
                                 
-                                if not self.execute_action(action):
+                                if not self.execute_action(action, screenshot):
                                     # Action failed, stay at current index for next iteration
                                     if self.verbose:
                                         print(f"❌ Instance #{self.instance_number}: Action {i + 1} failed, will retry from this action")
@@ -1041,12 +1250,17 @@ class AutomationInstance:
                                     # Action succeeded, move to next action
                                     self.current_action_index = i + 1
                                 
+                                action_exec_time = (time.time() - action_exec_start) * 1000
+                                if self.verbose:
+                                    print(f"⏱️ Instance #{self.instance_number}: Action {i + 1} took {action_exec_time:.1f}ms")
+                                
                                 # Process items if this is a cycle where items are obtained
                                 if state_config.get('processes_items', False):
+                                    items_start_time = time.time()
                                     if self.verbose:
                                         print(f"🎁 Instance #{self.instance_number}: Processing items after action")
                                     
-                                    time.sleep(2 * self.macro_executor.speed_multiplier)  # Wait for items to appear (respects speed)
+                                    # time.sleep(2 * self.macro_executor.speed_multiplier)  # Wait for items to appear (respects speed)
                                     new_screenshot = self.get_screenshot()
                                     if new_screenshot is not None and self.is_new_cycle(new_screenshot):
                                         # Increment cycle count regardless of item detection
@@ -1061,6 +1275,14 @@ class AutomationInstance:
                                         else:
                                             if self.verbose:
                                                 print(f"🎁 Instance #{self.instance_number}: Cycle {self.instance_data['cycle_count']} complete, no items detected")
+                                    
+                                    items_time = (time.time() - items_start_time) * 1000
+                                    if self.verbose:
+                                        print(f"⏱️ Instance #{self.instance_number}: Items processing took {items_time:.1f}ms")
+                            
+                            actions_time = (time.time() - actions_start_time) * 1000
+                            if self.verbose:
+                                print(f"⏱️ Instance #{self.instance_number}: All actions took {actions_time:.1f}ms")
                             
                             # If all actions completed successfully, reset action index
                             if action_success:
@@ -1068,12 +1290,14 @@ class AutomationInstance:
                         
                         # Handle legacy macro system
                         elif macros:
+                            macros_start_time = time.time()
                             if self.verbose:
                                 print(f"🎬 Instance #{self.instance_number}: Executing {len(macros)} macro(s) starting from index {self.current_action_index}: {macros}")
                             
                             # Execute macros starting from the current index
                             for i in range(self.current_action_index, len(macros)):
                                 macro = macros[i]
+                                macro_exec_start = time.time()
                                 if self.verbose:
                                     print(f"🎬 Instance #{self.instance_number}: Executing macro {i + 1}/{len(macros)}: {macro}")
                                 
@@ -1087,12 +1311,17 @@ class AutomationInstance:
                                     # Macro succeeded, move to next macro
                                     self.current_action_index = i + 1
                                 
+                                macro_exec_time = (time.time() - macro_exec_start) * 1000
+                                if self.verbose:
+                                    print(f"⏱️ Instance #{self.instance_number}: Macro {i + 1} took {macro_exec_time:.1f}ms")
+                                
                                 # Process items if this is a cycle where items are obtained
                                 if state_config.get('processes_items', False):
+                                    items_start_time = time.time()
                                     if self.verbose:
                                         print(f"🎁 Instance #{self.instance_number}: Processing items after macro '{macro}'")
                                     
-                                    time.sleep(2 * self.macro_executor.speed_multiplier)  # Wait for items to appear (respects speed)
+                                    # time.sleep(2 * self.macro_executor.speed_multiplier)  # Wait for items to appear (respects speed)
                                     new_screenshot = self.get_screenshot()
                                     if new_screenshot is not None and self.is_new_cycle(new_screenshot):
                                         # Increment cycle count regardless of item detection
@@ -1107,6 +1336,14 @@ class AutomationInstance:
                                         else:
                                             if self.verbose:
                                                 print(f"🎁 Instance #{self.instance_number}: Cycle {self.instance_data['cycle_count']} complete, no items detected")
+                                    
+                                    items_time = (time.time() - items_start_time) * 1000
+                                    if self.verbose:
+                                        print(f"⏱️ Instance #{self.instance_number}: Items processing took {items_time:.1f}ms")
+                            
+                            macros_time = (time.time() - macros_start_time) * 1000
+                            if self.verbose:
+                                print(f"⏱️ Instance #{self.instance_number}: All macros took {macros_time:.1f}ms")
                             
                             # If all macros completed successfully, reset action index
                             if action_success:
@@ -1114,6 +1351,10 @@ class AutomationInstance:
                     
                     # Transition to next state
                     if action_success:
+                        state_transition_start = time.time()
+                        if self.verbose:
+                            print(f"🔄 Instance #{self.instance_number}: Starting state transition")
+                        
                         next_states = state_config.get('next_states', [])
                         if next_states:
                             # Smart state selection based on cycles remaining
@@ -1140,13 +1381,27 @@ class AutomationInstance:
                             if self.verbose:
                                 print(f"🔄 Instance #{self.instance_number}: Transitioning to next state: {next_state}")
                             self.change_state(next_state)
+                        
+                        state_transition_time = (time.time() - state_transition_start) * 1000
+                        if self.verbose:
+                            print(f"⏱️ Instance #{self.instance_number}: State transition took {state_transition_time:.1f}ms")
                     else:
                         if self.verbose:
                             print(f"❌ Instance #{self.instance_number}: Action execution failed, staying in current state")
                     
-                    last_detection_time = current_time
+                    action_total_time = (time.time() - action_start_time) * 1000
+                    if self.verbose:
+                        print(f"⏱️ Instance #{self.instance_number}: Total action execution took {action_total_time:.1f}ms")
+                    
+                    # last_detection_time = current_time # This line was removed as per the new_code, as the original code had it.
                 
-                time.sleep(0.5 * self.macro_executor.speed_multiplier)  # Main loop delay (respects speed)
+                # Log total loop time
+                loop_end_time = time.time()
+                total_loop_time = (loop_end_time - current_time) * 1000
+                if self.verbose:
+                    print(f"⏱️ Instance #{self.instance_number}: Total loop time: {total_loop_time:.1f}ms")
+                
+                # time.sleep(0.5 * self.macro_executor.speed_multiplier)  # Main loop delay (respects speed)
                 
         except KeyboardInterrupt:
             print(f"\n🛑 Instance #{self.instance_number}: Interrupted by user")
@@ -1450,7 +1705,7 @@ class AutomationEngine:
                     elif key == 's':
                         self.show_status(start_time)
                 
-                time.sleep(0.5)
+                # time.sleep(0.5)
                 
         except KeyboardInterrupt:
             print("\n🛑 Keyboard interrupt - stopping all instances...")

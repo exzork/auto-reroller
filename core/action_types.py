@@ -38,6 +38,10 @@ class TapAction(TypedDict):
     delay_after: Optional[float]
     likelihood: Optional[float]  # Custom detection threshold (0.0-1.0)
     timeout: Optional[float]  # Timeout in seconds before skipping to next action (None = forever)
+    offset_x: Optional[int]  # Offset from template center in X direction
+    offset_y: Optional[int]  # Offset from template center in Y direction
+    tap_times: Optional[int]  # Number of times to tap (default: 1)
+    tap_delay: Optional[float]  # Delay between taps in seconds (default: 0.1)
 
 
 class SwipeAction(TypedDict):
@@ -166,7 +170,9 @@ def create_macro_action(name: str, timeout: Optional[int] = None, speed_multipli
 
 def create_tap_action(template: str, coordinates: Optional[tuple[int, int]] = None, 
                      delay_before: Optional[float] = None, delay_after: Optional[float] = None,
-                     likelihood: Optional[float] = None, timeout: Optional[float] = None) -> TapAction:
+                     likelihood: Optional[float] = None, timeout: Optional[float] = None,
+                     offset_x: Optional[int] = None, offset_y: Optional[int] = None,
+                     tap_times: Optional[int] = None, tap_delay: Optional[float] = None) -> TapAction:
     """Create a tap action"""
     return {
         "type": "tap",
@@ -175,7 +181,11 @@ def create_tap_action(template: str, coordinates: Optional[tuple[int, int]] = No
         "delay_before": delay_before,
         "delay_after": delay_after,
         "likelihood": likelihood,
-        "timeout": timeout
+        "timeout": timeout,
+        "offset_x": offset_x,
+        "offset_y": offset_y,
+        "tap_times": tap_times,
+        "tap_delay": tap_delay
     }
 
 

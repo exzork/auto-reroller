@@ -1,0 +1,33 @@
+{
+    "display_name": "FMJP",
+    "cycles_per_session": 10,
+    "device_resolution": [540, 960],
+    "discord_webhook_url": "YOUR_DISCORD_WEBHOOK_URL_HERE",
+    "minimum_score_threshold": 10,
+    
+    "card_scoring": {
+        "rare_item": 15,
+        "epic_item": 10,
+        "common_item": 5
+    },
+    "default_item_score": 3,
+    
+    "template_thresholds": {
+        "start_button": 0.8,
+        "loop_button": 0.8
+    },
+    
+    
+    "detection_regions": {
+        "slot1": [0.1, 0.1, 0.2, 0.15],
+        "slot2": [0.4, 0.1, 0.2, 0.15],
+        "slot3": [0.7, 0.1, 0.2, 0.15],
+        "slot4": [0.25, 0.3, 0.2, 0.15],
+        "slot5": [0.55, 0.3, 0.2, 0.15],
+        "slot6": [0.1, 0.5, 0.2, 0.15],
+        "slot7": [0.4, 0.5, 0.2, 0.15],
+        "slot8": [0.7, 0.5, 0.2, 0.15],
+        "slot9": [0.25, 0.7, 0.2, 0.15],
+        "slot10": [0.55, 0.7, 0.2, 0.15]
+    }
+} 

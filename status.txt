@@ -1,13 +1,8 @@
-📊 STATUS (6 instances) - 2025-08-03 10:03:06
-🎮 Game: Uma Musume Friend Point Spam
-⏱️  Runtime: 9.1 hours
+📊 STATUS (1 instances) - 2025-08-07 23:20:55
+🎮 Game: FMJP
+⏱️  Runtime: 0.0 hours
 🔄 Total sessions: 0
 ⚡ Speed: 0.0 sessions/hour
-🔢 Counter: 180
+🔢 Counter: 0
 
-   Instance #1: 0 sessions, Score: 0, State: restart career (18814s)
-   Instance #2: 0 sessions, Score: 0, State: start career (291s)
-   Instance #3: 0 sessions, Score: 0, State: start career (644s)
-   Instance #4: 0 sessions, Score: 0, State: start career (314s)
-   Instance #5: 0 sessions, Score: 0, State: start career (378s)
-   Instance #6: 0 sessions, Score: 0, State: waiting_for_main_menu (26454s)
+   Instance #1: 0 sessions, Score: 0, State: start (65s)

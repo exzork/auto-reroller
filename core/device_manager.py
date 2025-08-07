@@ -75,13 +75,13 @@ class DeviceManager:
             self.minicap_managers[device_id] = MinicapManager()
         return self.minicap_managers[device_id]
     
-    def get_screenshot(self, device_id: str) -> Optional[bytes]:
+    def get_screenshot(self, device_id: str, save_to_file: bool = True) -> Optional[bytes]:
         """Get screenshot from specific device using minicap"""
         try:
             minicap_manager = self._get_minicap_manager(device_id)
             
             # Try to get screenshot using minicap
-            screenshot_data = minicap_manager.get_screenshot(device_id)
+            screenshot_data = minicap_manager.get_screenshot(device_id, save_to_file)
             
             if screenshot_data:
                 return screenshot_data
@@ -139,12 +139,18 @@ class DeviceManager:
     
     def execute_adb_command(self, device_id: str, command: List[str], timeout: int = 10) -> Optional[subprocess.CompletedProcess]:
         """Execute ADB command on specific device"""
+        import time
+        adb_start_time = time.time()
+        
         try:
             full_command = ['adb', '-s', device_id] + command
             result = subprocess.run(full_command, capture_output=True, timeout=timeout)
+            
+            adb_time = (time.time() - adb_start_time) * 1000
+            
             return result
         except Exception as e:
-            print(f"❌ Error executing ADB command on {device_id}: {e}")
+            adb_time = (time.time() - adb_start_time) * 1000
             return None
     
     def kill_app(self, device_id: str, package_name: str) -> bool:
@@ -203,10 +209,16 @@ class DeviceManager:
     
     def tap(self, device_id: str, x: int, y: int) -> bool:
         """Tap at specific coordinates on device"""
+        import time
+        tap_start_time = time.time()
+        
         result = self.execute_adb_command(
             device_id, 
             ['shell', 'input', 'tap', str(x), str(y)]
         )
+        
+        tap_time = (time.time() - tap_start_time) * 1000
+        
         return result is not None and result.returncode == 0
     
     def swipe(self, device_id: str, start_x: int, start_y: int, end_x: int, end_y: int, duration: int = 1000) -> bool:

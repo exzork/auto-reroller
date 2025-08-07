@@ -5,7 +5,7 @@ import subprocess
 import sys
 import os
 from pathlib import Path
-from .minicap_manager import MinicapManager
+from minicap_manager import MinicapManager
 
 rectangles = []
 slot_index = 1
