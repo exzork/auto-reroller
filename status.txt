@@ -1,8 +1,8 @@
-📊 STATUS (1 instances) - 2025-08-07 23:20:55
+📊 STATUS (1 instances) - 2025-08-08 00:12:17
 🎮 Game: FMJP
 ⏱️  Runtime: 0.0 hours
 🔄 Total sessions: 0
 ⚡ Speed: 0.0 sessions/hour
 🔢 Counter: 0
 
-   Instance #1: 0 sessions, Score: 0, State: start (65s)
+   Instance #1: 0 sessions, Score: 0, State: start (5s)

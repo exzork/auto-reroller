@@ -239,7 +239,8 @@ class AutomationInstance:
         """Execute a tap at the saved coordinates for a detected template, with optional offset from center, or at explicit coordinates"""
         
         tap_start_time = time.time()
-        print(f"👆 Instance #{self.instance_number}: Starting tap execution for '{template_name}'")
+        if self.verbose:
+            print(f"👆 Instance #{self.instance_number}: Starting tap execution for '{template_name}'")
         
         # Use provided screenshot or get a new one
         if screenshot is None:
@@ -252,6 +253,58 @@ class AutomationInstance:
                 print(f"❌ Instance #{self.instance_number}: Failed to get screenshot for template detection")
             return False
         
+        # If template_name is None, skip template detection and use coordinates directly
+        if template_name is None:
+            if coordinates is None:
+                if self.verbose:
+                    print(f"❌ Instance #{self.instance_number}: No template specified and no coordinates provided")
+                return False
+            
+            x, y = coordinates
+            # Apply offsets if specified
+            if offset_x is not None:
+                x += offset_x
+            if offset_y is not None:
+                y += offset_y
+            
+            if self.verbose:
+                offset_info = ""
+                if offset_x is not None or offset_y is not None:
+                    offset_info = f" (with offset: x={offset_x or 0}, y={offset_y or 0})"
+                print(f"👆 Instance #{self.instance_number}: Executing tap at coordinates ({x}, {y}) without template check{offset_info}")
+            
+            # Execute multiple taps if specified
+            tap_count = tap_times or 1
+            tap_delay_seconds = tap_delay or 0.1
+            
+            if self.verbose and tap_count > 1:
+                print(f"👆 Instance #{self.instance_number}: Executing {tap_count} taps with {tap_delay_seconds}s delay")
+            
+            success = True
+            for i in range(tap_count):
+                if i > 0:  # Don't delay before first tap
+                    time.sleep(tap_delay_seconds)
+                
+                tap_success = self.device_manager.tap(self.device_id, x, y)
+                if not tap_success:
+                    success = False
+                    if self.verbose:
+                        print(f"❌ Instance #{self.instance_number}: Tap {i+1}/{tap_count} failed")
+                    break
+                elif self.verbose and tap_count > 1:
+                    print(f"✅ Instance #{self.instance_number}: Tap {i+1}/{tap_count} executed successfully")
+            
+            if self.verbose:
+                if success:
+                    print(f"✅ Instance #{self.instance_number}: All {tap_count} taps executed successfully")
+                else:
+                    print(f"❌ Instance #{self.instance_number}: Tap execution failed")
+            
+            tap_total_time = (time.time() - tap_start_time) * 1000
+            if self.verbose:
+                print(f"⏱️ Instance #{self.instance_number}: Total tap execution took {tap_total_time:.1f}ms")
+            return success
+        
         # Detect the template for validation
         template_detect_start = time.time()
         if not self.detect_template(screenshot, template_name):
@@ -260,7 +313,8 @@ class AutomationInstance:
             return False
         
         template_detect_time = (time.time() - template_detect_start) * 1000
-        print(f"⏱️ Instance #{self.instance_number}: Template detection for tap took {template_detect_time:.1f}ms")
+        if self.verbose:
+            print(f"⏱️ Instance #{self.instance_number}: Template detection for tap took {template_detect_time:.1f}ms")
         
         if self.verbose:
             print(f"✅ Instance #{self.instance_number}: Template '{template_name}' found, proceeding with tap")
@@ -309,7 +363,8 @@ class AutomationInstance:
                     print(f"❌ Instance #{self.instance_number}: Tap execution failed")
             
             tap_total_time = (time.time() - tap_start_time) * 1000
-            print(f"⏱️ Instance #{self.instance_number}: Total tap execution took {tap_total_time:.1f}ms")
+            if self.verbose:
+                print(f"⏱️ Instance #{self.instance_number}: Total tap execution took {tap_total_time:.1f}ms")
             return success
         
         # Otherwise, use template matching to find coordinates
@@ -362,7 +417,8 @@ class AutomationInstance:
                 print(f"❌ Instance #{self.instance_number}: Tap execution failed")
         
         tap_total_time = (time.time() - tap_start_time) * 1000
-        print(f"⏱️ Instance #{self.instance_number}: Total tap execution took {tap_total_time:.1f}ms")
+        if self.verbose:
+            print(f"⏱️ Instance #{self.instance_number}: Total tap execution took {tap_total_time:.1f}ms")
         return success
     
     def execute_action(self, action_config: Dict[str, Any], screenshot: Optional[np.ndarray] = None) -> bool:
@@ -940,6 +996,54 @@ class AutomationInstance:
         if screenshot is None:
             print(f"❌ Instance #{self.instance_number}: Failed to get screenshot for template detection")
             return False
+        
+        # If template_name is None, skip template detection and use coordinates directly
+        if template_name is None:
+            if coordinates is None:
+                print(f"❌ Instance #{self.instance_number}: No template specified and no coordinates provided")
+                return False
+            
+            x, y = coordinates
+            # Apply offsets if specified
+            if offset_x is not None:
+                x += offset_x
+            if offset_y is not None:
+                y += offset_y
+            
+            if self.verbose:
+                offset_info = ""
+                if offset_x is not None or offset_y is not None:
+                    offset_info = f" (with offset: x={offset_x or 0}, y={offset_y or 0})"
+                print(f"👆 Instance #{self.instance_number}: Tapping at coordinates ({x}, {y}) without template check{offset_info}")
+            
+            # Execute multiple taps if specified
+            tap_count = tap_times or 1
+            tap_delay_seconds = tap_delay or 0.1
+            
+            if self.verbose and tap_count > 1:
+                print(f"👆 Instance #{self.instance_number}: Executing {tap_count} taps with {tap_delay_seconds}s delay")
+            
+            success = True
+            for i in range(tap_count):
+                if i > 0:  # Don't delay before first tap
+                    time.sleep(tap_delay_seconds)
+                
+                tap_success = self.device_manager.tap(self.device_id, x, y)
+                if not tap_success:
+                    success = False
+                    if self.verbose:
+                        print(f"❌ Instance #{self.instance_number}: Tap {i+1}/{tap_count} failed")
+                    break
+                elif self.verbose and tap_count > 1:
+                    print(f"✅ Instance #{self.instance_number}: Tap {i+1}/{tap_count} executed successfully")
+            
+            if self.verbose:
+                if success:
+                    print(f"✅ Instance #{self.instance_number}: All {tap_count} taps executed successfully")
+                else:
+                    print(f"❌ Instance #{self.instance_number}: Tap execution failed")
+            
+            return success
         
         # Detect template with custom likelihood for validation
         if not self.detect_template_with_likelihood(screenshot, template_name, likelihood):

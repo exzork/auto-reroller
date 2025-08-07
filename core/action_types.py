@@ -32,7 +32,7 @@ class MacroAction(TypedDict):
 class TapAction(TypedDict):
     """Tap action configuration"""
     type: Literal["tap"]
-    template: str
+    template: Optional[str]  # Can be None to skip template detection
     coordinates: Optional[tuple[int, int]]
     delay_before: Optional[float]
     delay_after: Optional[float]
@@ -168,12 +168,25 @@ def create_macro_action(name: str, timeout: Optional[int] = None, speed_multipli
     }
 
 
-def create_tap_action(template: str, coordinates: Optional[tuple[int, int]] = None, 
+def create_tap_action(template: Optional[str], coordinates: Optional[tuple[int, int]] = None, 
                      delay_before: Optional[float] = None, delay_after: Optional[float] = None,
                      likelihood: Optional[float] = None, timeout: Optional[float] = None,
                      offset_x: Optional[int] = None, offset_y: Optional[int] = None,
                      tap_times: Optional[int] = None, tap_delay: Optional[float] = None) -> TapAction:
-    """Create a tap action"""
+    """Create a tap action configuration
+    
+    Args:
+        template: Template name to detect, or None to skip template detection and use coordinates directly
+        coordinates: Explicit coordinates to tap at (x, y)
+        delay_before: Delay before tap in seconds
+        delay_after: Delay after tap in seconds
+        likelihood: Custom detection threshold (0.0-1.0)
+        timeout: Timeout in seconds before skipping to next action
+        offset_x: Offset from template center in X direction
+        offset_y: Offset from template center in Y direction
+        tap_times: Number of times to tap (default: 1)
+        tap_delay: Delay between taps in seconds (default: 0.1)
+    """
     return {
         "type": "tap",
         "template": template,
