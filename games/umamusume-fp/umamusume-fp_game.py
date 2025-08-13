@@ -499,7 +499,7 @@ class UmamusumeFpGame(BaseGame):
                                 timeout=0.1
                             )],
                         condition="close",
-                        timeout=10,
+                        timeout=30,
                     ),
                     create_tap_action(
                         template="close",
