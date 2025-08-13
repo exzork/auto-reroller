@@ -3,6 +3,8 @@ FMJP Game Implementation
 Minimal implementation of the BaseGame class for FMJP automation
 """
 
+import time
+from turtle import delay
 import cv2
 import os
 import pytesseract
@@ -11,7 +13,7 @@ from typing import Dict, Any, List, Tuple, Optional
 from pathlib import Path
 from games.base_game import BaseGame
 from core.action_types import (
-    create_loop_action, create_macro_action, create_swipe_action, create_tap_action, create_wait_action, create_typing_action,
+    create_conditional_action, create_loop_action, create_macro_action, create_swipe_action, create_tap_action, create_wait_action, create_typing_action,
     create_counter_action, ActionConfig, StateConfig
 )
 
@@ -115,6 +117,8 @@ class FmjpGame(BaseGame):
                         condition="tutorial_inside_battle_text_1",
                         condition_likelihood=0.8,
                         actions=[
+                            create_tap_action("skip_btn", delay_after=2, timeout=1),
+                            create_tap_action("confirm_positive_icon", delay_after=2, timeout=1),
                             create_swipe_action(start_coordinates=(100, 400), end_coordinates=(200, 400), duration=1000),
                         ],
                     ),
@@ -129,6 +133,8 @@ class FmjpGame(BaseGame):
                         condition="battle_2_1_text",
                         condition_likelihood=0.8,
                         actions=[
+                            create_tap_action("skip_btn", delay_after=2, timeout=1),
+                            create_tap_action("confirm_positive_icon", delay_after=2, timeout=1),
                             create_tap_action("dialog_icon", delay_after=2, timeout=1),
                         ],
                     ),
@@ -137,7 +143,95 @@ class FmjpGame(BaseGame):
                     create_tap_action("battle_2_skill_1", delay_after=2),
                     create_tap_action("battle_2_select_char_2", delay_after=2),
                     create_tap_action("battle_2_2_text", delay_after=2, tap_times=4, tap_delay=2),
-                    create_tap_action("close_popup_icon",likelihood=0.4, delay_after=2),
+                    create_tap_action("close_popup_icon", delay_after=2, delay_before=2),
+                    create_loop_action(
+                        condition="battle_2_3_text",
+                        condition_likelihood=0.8,
+                        actions=[
+                            create_tap_action("battle_char_1_skill_1", likelihood=0.6, timeout=1, tap_times=2, tap_delay=1),
+                            create_tap_action("battle_char_2_skill_1", likelihood=0.6, timeout=1, tap_times=2, tap_delay=1),
+                            create_tap_action("battle_char_3_skill_1", likelihood=0.6, timeout=1, tap_times=2, tap_delay=1),
+                            create_tap_action("battle_char_4_skill_1", likelihood=0.6, timeout=1, tap_times=2, tap_delay=1),
+                            create_tap_action("battle_char_1_skill_2", likelihood=0.6, timeout=1, tap_times=2, tap_delay=1),
+                            create_tap_action("battle_char_2_skill_2", likelihood=0.6, timeout=1, tap_times=2, tap_delay=1),
+                            create_tap_action("battle_char_3_skill_2", likelihood=0.6, timeout=1, tap_times=2, tap_delay=1),
+                            create_tap_action("battle_char_4_skill_2", likelihood=0.6, timeout=1, tap_times=2, tap_delay=1),
+                        ],
+                    ),
+                    create_loop_action(
+                        condition="focus_icon",
+                        condition_likelihood=0.8,
+                        actions=[
+                            create_swipe_action(start_coordinates=(200, 400), end_coordinates=(100, 400), duration=100),
+                        ],
+                    ),
+                    create_tap_action(None,coordinates=(900, 440), delay_after=5),
+                    create_loop_action(
+                        condition="tutorial_recruit_open",
+                        actions=[
+                            create_tap_action("skip_btn", delay_after=2, timeout=1),
+                            create_tap_action("confirm_positive_icon", delay_after=2, timeout=1),
+                            create_tap_action("dialog_icon", delay_after=2, timeout=1),
+                        ]
+                    ),
+                    create_tap_action("tutorial_recruit_open", delay_after=2),
+                    create_tap_action("battle_2_done_btn", likelihood=0.6, delay_after=2),
+                    create_tap_action("tutorial_gacha_btn", tap_times=3, tap_delay=2, delay_after=2),
+                    create_tap_action("gacha_machine"),
+                    create_swipe_action(start_coordinates=(630, 140), end_coordinates=(630, 340), duration=1000, delay_after=5), #pull gacha
+                    create_tap_action(None, coordinates=(630, 140), delay_before=4, delay_after=2, tap_times=3, tap_delay=2, timeout=5),
+                    create_tap_action("auto_big_0", delay_after=2, tap_times=3, tap_delay=2),
+                    create_tap_action("battle_btn", delay_after=2, tap_times=3, tap_delay=2),
+                    create_tap_action("focus_map_icon", delay_after=2),
+                    create_tap_action("battle_map_go_btn", delay_after=2),
+                    create_tap_action("confirm_positive_icon", delay_after=2),
+                    create_tap_action("battle_3_1_text", delay_after=2, tap_times=3, tap_delay=2),
+                    create_tap_action("battle_add_support",coordinates=(180,230), delay_after=5, tap_times=3, tap_delay=2),
+                    create_tap_action("support_default_char_1",coordinates=(80,120),delay_after=2),
+                    create_tap_action("confirm_add_support", delay_after=2),
+                    create_tap_action("battle_ready_btn",delay_after=2),
+                    create_tap_action("battle_char_1_skill_1", delay_after=2, tap_times=3, tap_delay=2),
+                    create_loop_action(
+                        condition="tutorial_member_open",
+                        condition_likelihood=0.6,
+                        actions=[
+                            create_tap_action("battle_char_1_skill_1", likelihood=0.6, timeout=1, tap_times=2, tap_delay=1),
+                            create_tap_action("battle_char_2_skill_1", likelihood=0.6, timeout=1, tap_times=2, tap_delay=1),
+                            create_tap_action("battle_char_3_skill_1", likelihood=0.6, timeout=1, tap_times=2, tap_delay=1),
+                            create_tap_action("battle_char_4_skill_1", likelihood=0.6, timeout=1, tap_times=2, tap_delay=1),
+                            create_tap_action("battle_char_1_skill_2", likelihood=0.6, timeout=1, tap_times=2, tap_delay=1),
+                            create_tap_action("battle_char_2_skill_2", likelihood=0.6, timeout=1, tap_times=2, tap_delay=1),
+                            create_tap_action("battle_char_3_skill_2", likelihood=0.6, timeout=1, tap_times=2, tap_delay=1),
+                            create_tap_action("battle_char_4_skill_2", likelihood=0.6, timeout=1, tap_times=2, tap_delay=1),
+                            create_conditional_action(
+                                condition="battle_2_link_1",
+                                if_true=[
+                                    create_tap_action("battle_2_link_1", tap_times=3, tap_delay=1),
+                                    create_tap_action("battle_2_link_2",tap_times=3, tap_delay=1),
+                                    create_tap_action("battle_2_4_text", coordinates=(500,240), delay_after=2, tap_times=3, tap_delay=2, timeout=5),
+                                    create_tap_action("battle_char_1_skill_1", tap_times=2, tap_delay=1, timeout=5),
+                                    create_tap_action("battle_2_next", delay_after=2, tap_times=3, tap_delay=2, timeout=5),
+                                    create_tap_action("close_popup_icon", delay_after=2, delay_before=2, timeout=5)
+                                ]
+                            )
+
+                        ]
+                    ),
+                    create_tap_action("tutorial_member_open", delay_after=2, tap_times=3, tap_delay=1),
+                    create_tap_action("battle_2_done_btn", likelihood=0.6, delay_after=2, tap_times=2, tap_delay=1),
+                    create_tap_action("battle_home_btn", delay_after=2, tap_times=2, tap_delay=1),
+                    create_tap_action("tutorial_member_1_text", coordinates=(400,500), delay_after=2, tap_times=3, tap_delay=2),
+                    create_tap_action("tutorial_member_char_1", delay_after=2, tap_times=2, tap_delay=2),
+                    create_tap_action("tutorial_member_info_1", delay_after=2),
+                    create_tap_action("tutorial_member_info_2", delay_after=2),
+                    create_tap_action("tutorial_level_up_btn_1", delay_after=2, tap_times=2, tap_delay=2),
+                    create_tap_action("tutorial_level_up_btn_2", delay_after=2, tap_times=2, tap_delay=2),
+                    create_tap_action("confirm_positive_icon",likelihood=0.6, delay_after=2, tap_times=2, tap_delay=2),
+                    create_tap_action("battle_2_next", delay_after=2, tap_times=3, tap_delay=2),
+                    create_tap_action("close_popup_icon", delay_after=2, delay_before=2),
+                    create_tap_action("battle_home_btn", delay_after=2, tap_times=2, tap_delay=1),
+                    create_tap_action("battle_btn", delay_after=2, tap_times=2, tap_delay=1),
+                    create_tap_action("battle_home_btn", delay_after=2, tap_times=2, tap_delay=1),
                 ],
                 "next_states": ["main_loop"]
             },

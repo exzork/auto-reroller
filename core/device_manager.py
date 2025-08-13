@@ -5,7 +5,7 @@ Device Manager for handling ADB connections and device management
 import subprocess
 import time
 from typing import List, Optional
-from .minicap_manager import MinicapManager
+from .minicap_manager import ScreencapManager
 
 
 class DeviceManager:
@@ -14,7 +14,7 @@ class DeviceManager:
     def __init__(self):
         self.device_list = []
         self.initialized = False
-        self.minicap_managers = {}  # Store minicap managers per device
+        self.screencap_managers = {}  # Store screencap managers per device
     
     def initialize(self) -> bool:
         """Initialize ADB and detect connected devices"""
@@ -69,180 +69,156 @@ class DeviceManager:
         except Exception:
             return False
     
-    def _get_minicap_manager(self, device_id: str) -> MinicapManager:
-        """Get or create minicap manager for device"""
-        if device_id not in self.minicap_managers:
-            self.minicap_managers[device_id] = MinicapManager()
-        return self.minicap_managers[device_id]
+    def _get_screencap_manager(self, device_id: str) -> ScreencapManager:
+        """Get or create screencap manager for device"""
+        if device_id not in self.screencap_managers:
+            self.screencap_managers[device_id] = ScreencapManager()
+        return self.screencap_managers[device_id]
     
     def get_screenshot(self, device_id: str, save_to_file: bool = True) -> Optional[bytes]:
-        """Get screenshot from specific device using minicap"""
+        """Get screenshot from specific device using screencap"""
         try:
-            minicap_manager = self._get_minicap_manager(device_id)
+            screencap_manager = self._get_screencap_manager(device_id)
             
-            # Try to get screenshot using minicap
-            screenshot_data = minicap_manager.get_screenshot(device_id, save_to_file)
+            # Get screenshot using screencap
+            screenshot_data = screencap_manager.get_screenshot(device_id, save_to_file)
             
             if screenshot_data:
                 return screenshot_data
             else:
-                # Fallback to screencap if minicap fails
-                print(f"⚠️ Minicap failed for {device_id}, falling back to screencap")
-                result = subprocess.run([
-                    'adb', '-s', device_id, 'exec-out', 'screencap', '-p'
-                ], capture_output=True, timeout=10)
-                
-                if result.returncode == 0 and result.stdout:
-                    return result.stdout
-                else:
-                    print(f"❌ Failed to get screenshot from device {device_id}")
-                    return None
+                print(f"❌ Failed to get screenshot from device {device_id}")
+                return None
                 
         except Exception as e:
-            print(f"❌ Error getting screenshot from {device_id}: {e}")
+            print(f"❌ Error getting screenshot for {device_id}: {e}")
             return None
     
-    def setup_minicap_for_device(self, device_id: str) -> bool:
-        """Setup minicap for a specific device"""
-        try:
-            minicap_manager = self._get_minicap_manager(device_id)
-            return minicap_manager.setup_minicap(device_id)
-        except Exception as e:
-            print(f"❌ Error setting up minicap for {device_id}: {e}")
-            return False
+    def get_screenshot_as_image(self, device_id: str):
+        """Get screenshot as OpenCV image array"""
+        screencap_manager = self._get_screencap_manager(device_id)
+        return screencap_manager.get_screenshot_as_image(device_id)
     
-    def start_minicap_for_device(self, device_id: str) -> bool:
-        """Start minicap service for a specific device"""
-        try:
-            minicap_manager = self._get_minicap_manager(device_id)
-            return minicap_manager.start_minicap(device_id)
-        except Exception as e:
-            print(f"❌ Error starting minicap for {device_id}: {e}")
-            return False
+    def get_multiple_screenshots(self, device_id: str, count: int = 5, delay: float = 0.1) -> list[bytes]:
+        """Get multiple screenshots with optional delay"""
+        screencap_manager = self._get_screencap_manager(device_id)
+        return screencap_manager.get_multiple_screenshots(device_id, count, delay)
     
-    def stop_minicap_for_device(self, device_id: str):
-        """Stop minicap service for a specific device"""
-        try:
-            if device_id in self.minicap_managers:
-                self.minicap_managers[device_id].stop_minicap(device_id)
-        except Exception as e:
-            print(f"❌ Error stopping minicap for {device_id}: {e}")
+    def start_screenshot_session(self, device_id: str) -> bool:
+        """Start a screenshot session for multiple captures"""
+        screencap_manager = self._get_screencap_manager(device_id)
+        return screencap_manager.start_session(device_id)
     
-    def cleanup_minicap_for_device(self, device_id: str):
-        """Cleanup minicap for a specific device"""
-        try:
-            if device_id in self.minicap_managers:
-                self.minicap_managers[device_id].cleanup(device_id)
-                del self.minicap_managers[device_id]
-        except Exception as e:
-            print(f"❌ Error cleaning up minicap for {device_id}: {e}")
+    def end_screenshot_session(self, device_id: str):
+        """End screenshot session and cleanup"""
+        screencap_manager = self._get_screencap_manager(device_id)
+        screencap_manager.end_session(device_id)
+    
+    def get_screenshot_stats(self, device_id: str) -> dict:
+        """Get screenshot statistics for device"""
+        screencap_manager = self._get_screencap_manager(device_id)
+        return screencap_manager.get_stats(device_id)
+    
+    def cleanup_screencap_for_device(self, device_id: str):
+        """Cleanup screencap for device"""
+        if device_id in self.screencap_managers:
+            self.screencap_managers[device_id].cleanup(device_id)
+            del self.screencap_managers[device_id]
     
     def execute_adb_command(self, device_id: str, command: List[str], timeout: int = 10) -> Optional[subprocess.CompletedProcess]:
         """Execute ADB command on specific device"""
-        import time
-        adb_start_time = time.time()
-        
         try:
             full_command = ['adb', '-s', device_id] + command
             result = subprocess.run(full_command, capture_output=True, timeout=timeout)
-            
-            adb_time = (time.time() - adb_start_time) * 1000
-            
             return result
         except Exception as e:
-            adb_time = (time.time() - adb_start_time) * 1000
+            print(f"❌ Error executing ADB command for {device_id}: {e}")
             return None
     
     def kill_app(self, device_id: str, package_name: str) -> bool:
-        """Kill an app on specific device"""
-        result = self.execute_adb_command(
-            device_id, 
-            ['shell', 'am', 'force-stop', package_name]
-        )
-        return result and result.returncode == 0
+        """Kill app on device"""
+        try:
+            result = self.execute_adb_command(device_id, ['shell', 'am', 'force-stop', package_name])
+            return result.returncode == 0 if result else False
+        except Exception as e:
+            print(f"❌ Error killing app {package_name} on {device_id}: {e}")
+            return False
     
     def start_app(self, device_id: str, activity_name: str) -> bool:
-        """Start an app on specific device"""
-        result = self.execute_adb_command(
-            device_id,
-            ['shell', 'am', 'start', '-W', '-n', activity_name],
-            timeout=15
-        )
-        return result and result.returncode == 0
+        """Start app on device"""
+        try:
+            result = self.execute_adb_command(device_id, ['shell', 'am', 'start', '-n', activity_name])
+            return result.returncode == 0 if result else False
+        except Exception as e:
+            print(f"❌ Error starting app {activity_name} on {device_id}: {e}")
+            return False
     
     def restart_app(self, device_id: str, package_name: str, activity_name: str) -> bool:
-        """Restart an app on specific device"""
-        # Kill the app
-        if not self.kill_app(device_id, package_name):
-            print(f"❌ Failed to kill app {package_name} on {device_id}")
+        """Restart app on device"""
+        try:
+            # Kill app first
+            if self.kill_app(device_id, package_name):
+                time.sleep(1)  # Wait a moment
+                
+                # Start app
+                return self.start_app(device_id, activity_name)
+            else:
+                print(f"❌ Failed to kill app {package_name} on {device_id}")
+                return False
+        except Exception as e:
+            print(f"❌ Error restarting app {package_name} on {device_id}: {e}")
             return False
-        
-        # Wait a moment
-        time.sleep(2)
-        
-        # Start the app
-        if not self.start_app(device_id, activity_name):
-            print(f"❌ Failed to start app {activity_name} on {device_id}")
-            return False
-        
-        # Wait for app to load
-        time.sleep(5)
-        return True
     
     def get_clipboard(self, device_id: str) -> Optional[str]:
-        """Get clipboard content from device via clipper broadcast"""
+        """Get clipboard content from device"""
         try:
-            result = self.execute_adb_command(
-                device_id,
-                ['shell', 'am', 'broadcast', '-a', 'clipper.get']
-            )
-            
+            result = self.execute_adb_command(device_id, ['shell', 'am', 'broadcast', '-a', 'clipper.get'])
             if result and result.returncode == 0:
-                import re
-                match = re.search(r'data="([^"]+)"', result.stdout.decode())
-                if match:
-                    return match.group(1)
+                # Parse clipboard content from broadcast output
+                output = result.stdout.decode()
+                # This is a simplified parser - you might need to adjust based on your clipper app
+                return output.strip()
             return None
         except Exception as e:
             print(f"❌ Error getting clipboard from {device_id}: {e}")
             return None
     
     def tap(self, device_id: str, x: int, y: int) -> bool:
-        """Tap at specific coordinates on device"""
-        import time
-        tap_start_time = time.time()
-        
-        result = self.execute_adb_command(
-            device_id, 
-            ['shell', 'input', 'tap', str(x), str(y)]
-        )
-        
-        tap_time = (time.time() - tap_start_time) * 1000
-        
-        return result is not None and result.returncode == 0
+        """Tap at coordinates on device"""
+        try:
+            result = self.execute_adb_command(device_id, ['shell', 'input', 'tap', str(x), str(y)])
+            return result.returncode == 0 if result else False
+        except Exception as e:
+            print(f"❌ Error tapping at ({x}, {y}) on {device_id}: {e}")
+            return False
     
     def swipe(self, device_id: str, start_x: int, start_y: int, end_x: int, end_y: int, duration: int = 1000) -> bool:
-        """Swipe from start to end coordinates on device"""
-        result = self.execute_adb_command(
-            device_id,
-            ['shell', 'input', 'swipe', str(start_x), str(start_y), str(end_x), str(end_y), str(duration)]
-        )
-        return result is not None and result.returncode == 0
+        """Swipe on device"""
+        try:
+            result = self.execute_adb_command(device_id, [
+                'shell', 'input', 'swipe', 
+                str(start_x), str(start_y), 
+                str(end_x), str(end_y), 
+                str(duration)
+            ])
+            return result.returncode == 0 if result else False
+        except Exception as e:
+            print(f"❌ Error swiping on {device_id}: {e}")
+            return False
     
     def input_text(self, device_id: str, text: str) -> bool:
         """Input text on device"""
-        # Escape special characters for shell
-        escaped_text = text.replace('"', '\\"').replace('$', '\\$').replace('`', '\\`')
-        result = self.execute_adb_command(
-            device_id,
-            ['shell', 'input', 'text', f'"{escaped_text}"']
-        )
-        return result is not None and result.returncode == 0
+        try:
+            result = self.execute_adb_command(device_id, ['shell', 'input', 'text', text])
+            return result.returncode == 0 if result else False
+        except Exception as e:
+            print(f"❌ Error inputting text on {device_id}: {e}")
+            return False
     
     def send_key(self, device_id: str, keycode: str) -> bool:
-        """Send a keycode to device"""
-        result = self.execute_adb_command(
-            device_id,
-            ['shell', 'input', 'keyevent', keycode]
-        )
-        return result is not None and result.returncode == 0 
+        """Send key event to device"""
+        try:
+            result = self.execute_adb_command(device_id, ['shell', 'input', 'keyevent', keycode])
+            return result.returncode == 0 if result else False
+        except Exception as e:
+            print(f"❌ Error sending key {keycode} to {device_id}: {e}")
+            return False 

@@ -749,11 +749,74 @@ class AutomationInstance:
                     if target_state:
                         print(f"   🎯 Will jump to state: {target_state}")
                 
-                # Execute actions
-                for action in actions_to_execute:
-                    if not self.execute_action(action, check_screenshot):
-                        print(f"❌ Instance #{self.instance_number}: Failed to execute action in conditional")
-                        return False
+                # Execute actions with timeout handling
+                start_time = time.time()
+                successful_actions = 0
+                failed_actions = 0
+                
+                for i, action in enumerate(actions_to_execute):
+                    # Check timeout before executing each action
+                    if timeout and time.time() - start_time > timeout:
+                        if self.verbose:
+                            print(f"   ⏱️ Instance #{self.instance_number}: Conditional action timeout reached ({timeout}s)")
+                        break
+                    
+                    if self.verbose:
+                        print(f"   🎬 Instance #{self.instance_number}: Executing conditional action {i + 1}/{len(actions_to_execute)}")
+                    
+                    # Retry the action until it succeeds or timeout is reached
+                    action_success = False
+                    action_start_time = time.time()
+                    
+                    while not action_success:
+                        # Check if we've exceeded the overall timeout
+                        if timeout and time.time() - start_time > timeout:
+                            if self.verbose:
+                                print(f"   ⏱️ Instance #{self.instance_number}: Conditional action timeout reached ({timeout}s) during retry")
+                            break
+                        
+                        # Check if this individual action has its own timeout
+                        action_timeout = action.get('timeout')
+                        if action_timeout and time.time() - action_start_time > action_timeout:
+                            if self.verbose:
+                                print(f"   ⏱️ Instance #{self.instance_number}: Action {i + 1} timeout reached ({action_timeout}s)")
+                            break
+                        
+                        # Get fresh screenshot for each action attempt
+                        fresh_screenshot = self.get_screenshot()
+                        if fresh_screenshot is None:
+                            if self.verbose:
+                                print(f"   ❌ Instance #{self.instance_number}: Failed to get fresh screenshot for action {i + 1}")
+                            # Brief delay before retry to avoid hammering
+                            time.sleep(0.1)
+                            continue
+                        
+                        action_success = self.execute_action(action, fresh_screenshot)
+                        if action_success:
+                            successful_actions += 1
+                            if self.verbose:
+                                print(f"   ✅ Instance #{self.instance_number}: Conditional action {i + 1} succeeded")
+                        else:
+                            if self.verbose:
+                                print(f"   ❌ Instance #{self.instance_number}: Conditional action {i + 1} failed, retrying...")
+                            # Brief delay before retry to avoid hammering
+                            time.sleep(0.1)
+                    
+                    if not action_success:
+                        failed_actions += 1
+                        if self.verbose:
+                            print(f"   ❌ Instance #{self.instance_number}: Conditional action {i + 1} failed after all retries")
+                    
+                    action_exec_time = (time.time() - action_start_time) * 1000
+                    if self.verbose:
+                        print(f"⏱️ Instance #{self.instance_number}: Conditional action {i + 1} took {action_exec_time:.1f}ms")
+                
+                # Log summary
+                if self.verbose:
+                    print(f"   📊 Instance #{self.instance_number}: Conditional action summary - {successful_actions} succeeded, {failed_actions} failed")
+                
+                # Set action_success based on whether at least one action succeeded
+                action_success = successful_actions > 0 or len(actions_to_execute) == 0
                 
                 # Handle state jumping if specified
                 if target_state:
@@ -762,7 +825,8 @@ class AutomationInstance:
                     self.change_state(target_state)
                     return True  # Return True since state change was successful
                 
-                return True
+                # Return True if at least one action succeeded, or if no actions were executed
+                return action_success
             else:
                 print(f"❌ Instance #{self.instance_number}: Failed to get screenshot for conditional")
                 return False
@@ -1316,20 +1380,61 @@ class AutomationInstance:
                             print(f"   🎬 Executing {len(actions_to_execute)} action(s) for {'true' if condition_met else 'false'} branch")
                         
                         # Execute conditional actions
+                        successful_actions = 0
+                        failed_actions = 0
+                        
                         for i, action in enumerate(actions_to_execute):
                             action_exec_start = time.time()
                             if self.verbose:
                                 print(f"🎬 Instance #{self.instance_number}: Executing conditional action {i + 1}/{len(actions_to_execute)}")
                             
-                            if not self.execute_action(action, screenshot):
+                            # Retry the action until it succeeds or timeout is reached
+                            action_success = False
+                            action_start_time = time.time()
+                            
+                            while not action_success:
+                                # Check if this individual action has its own timeout
+                                action_timeout = action.get('timeout')
+                                if action_timeout and time.time() - action_start_time > action_timeout:
+                                    if self.verbose:
+                                        print(f"   ⏱️ Instance #{self.instance_number}: Action {i + 1} timeout reached ({action_timeout}s)")
+                                    break
+                                
+                                # Get fresh screenshot for each action attempt
+                                fresh_screenshot = self.get_screenshot()
+                                if fresh_screenshot is None:
+                                    if self.verbose:
+                                        print(f"   ❌ Instance #{self.instance_number}: Failed to get fresh screenshot for action {i + 1}")
+                                    # Brief delay before retry to avoid hammering
+                                    time.sleep(0.1)
+                                    continue
+                                
+                                action_success = self.execute_action(action, fresh_screenshot)
+                                if action_success:
+                                    successful_actions += 1
+                                    if self.verbose:
+                                        print(f"   ✅ Instance #{self.instance_number}: Conditional action {i + 1} succeeded")
+                                else:
+                                    if self.verbose:
+                                        print(f"   ❌ Instance #{self.instance_number}: Conditional action {i + 1} failed, retrying...")
+                                    # Brief delay before retry to avoid hammering
+                                    time.sleep(0.1)
+                            
+                            if not action_success:
+                                failed_actions += 1
                                 if self.verbose:
-                                    print(f"❌ Instance #{self.instance_number}: Conditional action {i + 1} failed")
-                                action_success = False
-                                break
+                                    print(f"   ❌ Instance #{self.instance_number}: Conditional action {i + 1} failed after all retries")
                             
                             action_exec_time = (time.time() - action_exec_start) * 1000
                             if self.verbose:
                                 print(f"⏱️ Instance #{self.instance_number}: Conditional action {i + 1} took {action_exec_time:.1f}ms")
+                        
+                        # Log summary
+                        if self.verbose:
+                            print(f"   📊 Instance #{self.instance_number}: State conditional action summary - {successful_actions} succeeded, {failed_actions} failed")
+                        
+                        # Set action_success based on whether at least one action succeeded
+                        action_success = successful_actions > 0 or len(actions_to_execute) == 0
                     else:
                         # Handle regular actions (existing logic)
                         if actions:
