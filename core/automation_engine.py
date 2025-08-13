@@ -501,11 +501,20 @@ class AutomationInstance:
                 # Try to execute tap with timeout
                 tap_start_time = time.time()
                 while time.time() - tap_start_time < timeout:
+                    # Get fresh screenshot for each retry attempt
+                    fresh_screenshot = self.get_screenshot()
+                    if fresh_screenshot is None:
+                        if self.verbose:
+                            print(f"❌ Instance #{self.instance_number}: Failed to get fresh screenshot for retry")
+                        # Brief delay before retry to avoid hammering
+                        time.sleep(0.1)
+                        continue
+                    
                     # Execute tap with custom likelihood if specified
                     if likelihood is not None:
-                        success = self.execute_tap_with_likelihood(template_name, likelihood, offset_x, offset_y, coordinates, tap_times, tap_delay, screenshot)
+                        success = self.execute_tap_with_likelihood(template_name, likelihood, offset_x, offset_y, coordinates, tap_times, tap_delay, fresh_screenshot)
                     else:
-                        success = self.execute_tap(template_name, offset_x, offset_y, coordinates, tap_times, tap_delay, screenshot)
+                        success = self.execute_tap(template_name, offset_x, offset_y, coordinates, tap_times, tap_delay, fresh_screenshot)
                     
                     if success:
                         break
@@ -1255,14 +1264,14 @@ class AutomationInstance:
         self.start_background_timeout_checker()
         
         # Restart app for clean state
-        # if not self.device_manager.restart_app(
-        #     self.device_id, 
-        #     self.game.get_app_package(), 
-        #     self.game.get_app_activity()
-        # ):
-        #     print(f"❌ Instance #{self.instance_number}: Failed to restart app")
-        #     self.stop_background_timeout_checker()
-        #     return False
+        if not self.device_manager.restart_app(
+            self.device_id, 
+            self.game.get_app_package(), 
+            self.game.get_app_activity()
+        ):
+            print(f"❌ Instance #{self.instance_number}: Failed to restart app")
+            self.stop_background_timeout_checker()
+            return False
         
         # Get automation states from game
         automation_states = self.game.get_automation_states()
@@ -1458,6 +1467,37 @@ class AutomationInstance:
                                 else:
                                     # Action succeeded, move to next action
                                     self.current_action_index = i + 1
+                                    
+                                    # Get fresh screenshot after successful action execution
+                                    if self.verbose:
+                                        print(f"📸 Instance #{self.instance_number}: Getting fresh screenshot after successful action {i + 1}")
+                                    fresh_screenshot = self.get_screenshot()
+                                    if fresh_screenshot is not None:
+                                        screenshot = fresh_screenshot
+                                        if self.verbose:
+                                            print(f"📸 Instance #{self.instance_number}: Fresh screenshot captured after action {i + 1}")
+                                        
+                                        # Clear stored template coordinates and re-detect with fresh screenshot
+                                        self.image_detector.clear_detected_coordinates()
+                                        if self.verbose:
+                                            print(f"🧹 Instance #{self.instance_number}: Cleared stored coordinates after action {i + 1}")
+                                        
+                                        # Re-detect templates with the fresh screenshot
+                                        if templates:
+                                            if self.verbose:
+                                                print(f"🔍 Instance #{self.instance_number}: Re-detecting templates after action {i + 1}")
+                                            template_detected = False
+                                            for template in templates:
+                                                if self.detect_template(screenshot, template):
+                                                    template_detected = True
+                                                    if self.verbose:
+                                                        print(f"✅ Instance #{self.instance_number}: Template '{template}' re-detected after action {i + 1}")
+                                                    break
+                                            if self.verbose and not template_detected:
+                                                print(f"❌ Instance #{self.instance_number}: No templates re-detected after action {i + 1}")
+                                    else:
+                                        if self.verbose:
+                                            print(f"⚠️ Instance #{self.instance_number}: Failed to get fresh screenshot after action {i + 1}")
                                 
                                 action_exec_time = (time.time() - action_exec_start) * 1000
                                 if self.verbose:
@@ -1519,6 +1559,37 @@ class AutomationInstance:
                                 else:
                                     # Macro succeeded, move to next macro
                                     self.current_action_index = i + 1
+                                    
+                                    # Get fresh screenshot after successful macro execution
+                                    if self.verbose:
+                                        print(f"📸 Instance #{self.instance_number}: Getting fresh screenshot after successful macro {i + 1}")
+                                    fresh_screenshot = self.get_screenshot()
+                                    if fresh_screenshot is not None:
+                                        screenshot = fresh_screenshot
+                                        if self.verbose:
+                                            print(f"📸 Instance #{self.instance_number}: Fresh screenshot captured after macro {i + 1}")
+                                        
+                                        # Clear stored template coordinates and re-detect with fresh screenshot
+                                        self.image_detector.clear_detected_coordinates()
+                                        if self.verbose:
+                                            print(f"🧹 Instance #{self.instance_number}: Cleared stored coordinates after macro {i + 1}")
+                                        
+                                        # Re-detect templates with the fresh screenshot
+                                        if templates:
+                                            if self.verbose:
+                                                print(f"🔍 Instance #{self.instance_number}: Re-detecting templates after macro {i + 1}")
+                                            template_detected = False
+                                            for template in templates:
+                                                if self.detect_template(screenshot, template):
+                                                    template_detected = True
+                                                    if self.verbose:
+                                                        print(f"✅ Instance #{self.instance_number}: Template '{template}' re-detected after macro {i + 1}")
+                                                    break
+                                            if self.verbose and not template_detected:
+                                                print(f"❌ Instance #{self.instance_number}: No templates re-detected after macro {i + 1}")
+                                    else:
+                                        if self.verbose:
+                                            print(f"⚠️ Instance #{self.instance_number}: Failed to get fresh screenshot after macro {i + 1}")
                                 
                                 macro_exec_time = (time.time() - macro_exec_start) * 1000
                                 if self.verbose:
@@ -1594,6 +1665,37 @@ class AutomationInstance:
                         state_transition_time = (time.time() - state_transition_start) * 1000
                         if self.verbose:
                             print(f"⏱️ Instance #{self.instance_number}: State transition took {state_transition_time:.1f}ms")
+                        
+                        # Get fresh screenshot after successful state transition to prevent detecting previous state's templates
+                        if self.verbose:
+                            print(f"📸 Instance #{self.instance_number}: Getting fresh screenshot after successful state transition")
+                        fresh_screenshot = self.get_screenshot()
+                        if fresh_screenshot is not None:
+                            screenshot = fresh_screenshot
+                            if self.verbose:
+                                print(f"📸 Instance #{self.instance_number}: Fresh screenshot captured for next iteration")
+                            
+                            # Clear stored template coordinates so they get re-detected with the fresh screenshot
+                            self.image_detector.clear_detected_coordinates()
+                            if self.verbose:
+                                print(f"🧹 Instance #{self.instance_number}: Cleared stored template coordinates for fresh detection")
+                            
+                            # Re-detect templates with the fresh screenshot to get updated detection results
+                            if templates:
+                                if self.verbose:
+                                    print(f"🔍 Instance #{self.instance_number}: Re-detecting templates with fresh screenshot")
+                                template_detected = False
+                                for template in templates:
+                                    if self.detect_template(screenshot, template):
+                                        template_detected = True
+                                        if self.verbose:
+                                            print(f"✅ Instance #{self.instance_number}: Template '{template}' re-detected with fresh screenshot")
+                                        break
+                                if self.verbose and not template_detected:
+                                    print(f"❌ Instance #{self.instance_number}: No templates re-detected with fresh screenshot")
+                        else:
+                            if self.verbose:
+                                print(f"⚠️ Instance #{self.instance_number}: Failed to get fresh screenshot after state transition")
                     else:
                         if self.verbose:
                             print(f"❌ Instance #{self.instance_number}: Action execution failed, staying in current state")
