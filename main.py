@@ -37,6 +37,7 @@ Examples:
   python main.py --web-only  # Start web interface only
   python main.py umamusume --stream  # Run automation with streaming (real-time frames)
   python main.py umamusume --stream --stream-port-start 1320  # Custom port start
+  python main.py umamusume --resume  # Resume from saved state (resume.json)
         """
     )
     
@@ -117,6 +118,10 @@ Examples:
                        type=int,
                        default=1313,
                        help='Starting port for minicap streaming (default: 1313)')
+    
+    parser.add_argument('--resume',
+                       action='store_true',
+                       help='Force resume from saved state (resume.json)')
     
     return parser.parse_args()
 
@@ -261,6 +266,7 @@ def main():
             print(f"   • Discord notifications: {'✅' if game.has_discord_webhook() else '❌'}")
             print(f"   • Web interface: {'✅' if args.web else '❌'}")
             print(f"   • Streaming mode: {'✅' if args.stream else '❌'}")
+            print(f"   • Resume mode: {'✅' if args.resume else '❌'}")
             print("")
             
             # Verbose configuration details
@@ -293,7 +299,8 @@ def main():
                 inter_macro_delay=args.delay,
                 max_instances=len(available_devices),
                 verbose=args.verbose,
-                use_streaming=args.stream
+                use_streaming=args.stream,
+                force_resume=args.resume
             )
             
             # Update web interface with automation engine

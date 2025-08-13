@@ -37,6 +37,10 @@ class BaseGame(ABC):
         """Get the current counter value"""
         return self.counter
     
+    def set_counter(self, value: int):
+        """Set the counter to a specific value"""
+        self.counter = value
+    
     def reset_counter(self):
         """Reset the counter to 0"""
         self.counter = 0

@@ -335,16 +335,16 @@ class UmamusumeFpGame(BaseGame):
                         delay_after=5.0
                     ),
                     create_tap_action(
-                        template="confirm",
-                        likelihood=0.9,
-                        delay_after=5.0,
-                        timeout=5
-                    ),
-                    create_tap_action(
                         template="next",
                         likelihood=0.9,
                         delay_before=5.0,
                         delay_after=2.0
+                    ),
+                    create_tap_action(
+                        template="confirm",
+                        likelihood=0.9,
+                        delay_after=5.0,
+                        timeout=5
                     ),
                     create_tap_action(
                         template="next",
@@ -676,18 +676,19 @@ class UmamusumeFpGame(BaseGame):
                         likelihood=0.9,
                         delay_after=5.0
                     ),
-                    create_tap_action(
-                        template="confirm",
-                        likelihood=0.9,
-                        delay_after=1.0,
-                        timeout=5
-                    ),
                     create_loop_action(
                         actions=[
                             create_tap_action(
+                                template="confirm",
+                                likelihood=0.9,
+                                delay_after=1.0,
+                                timeout=1
+                            ),
+                            create_tap_action(
                                 template="next",
                                 likelihood=0.9,
-                                delay_after=2.0
+                                delay_after=2.0,
+                                timeout=1
                             ),
                         ],
                         condition="auto select",
@@ -782,7 +783,7 @@ class UmamusumeFpGame(BaseGame):
                                 ],
                                 likelihood=0.99,
                                 if_true_state="complete", #complete current account as no stamina left
-                                timeout=2
+                                timeout=10
                             ),
                             create_tap_action(
                                 template="close",

@@ -6,16 +6,16 @@ Handles the core automation logic and state management
 import time
 import threading
 import msvcrt
+import json
 import numpy as np
-from typing import Dict, Any, List, Optional, Tuple
 from pathlib import Path
-
-from .device_manager import DeviceManager
-from .macro_executor import MacroExecutor
-from .image_detection import ImageDetector
-from .discord_notifier import DiscordNotifier
-from .minicap_stream_manager import MinicapStreamManager
+from typing import Dict, List, Any, Optional
 from games.base_game import BaseGame
+from core.device_manager import DeviceManager
+from core.macro_executor import MacroExecutor
+from core.image_detection import ImageDetector
+from core.discord_notifier import DiscordNotifier
+from core.minicap_stream_manager import MinicapStreamManager
 from .action_types import ActionType, validate_action_config, create_typing_action
 
 
@@ -235,7 +235,7 @@ class AutomationInstance:
         
         return success
     
-    def execute_tap(self, template_name: str, offset_x: Optional[int] = None, offset_y: Optional[int] = None, coordinates: Optional[tuple[int, int]] = None, tap_times: Optional[int] = None, tap_delay: Optional[float] = None, screenshot: Optional[np.ndarray] = None) -> bool:
+    def execute_tap(self, template_name: Optional[str] = None, offset_x: Optional[int] = None, offset_y: Optional[int] = None, coordinates: Optional[tuple[int, int]] = None, tap_times: Optional[int] = None, tap_delay: Optional[float] = None, screenshot: Optional[np.ndarray] = None) -> bool:
         """Execute a tap at the saved coordinates for a detected template, with optional offset from center, or at explicit coordinates"""
         
         tap_start_time = time.time()
@@ -1264,14 +1264,14 @@ class AutomationInstance:
         self.start_background_timeout_checker()
         
         # Restart app for clean state
-        if not self.device_manager.restart_app(
-            self.device_id, 
-            self.game.get_app_package(), 
-            self.game.get_app_activity()
-        ):
-            print(f"❌ Instance #{self.instance_number}: Failed to restart app")
-            self.stop_background_timeout_checker()
-            return False
+        # if not self.device_manager.restart_app(
+        #     self.device_id, 
+        #     self.game.get_app_package(), 
+        #     self.game.get_app_activity()
+        # ):
+        #     print(f"❌ Instance #{self.instance_number}: Failed to restart app")
+        #     self.stop_background_timeout_checker()
+        #     return False
         
         # Get automation states from game
         automation_states = self.game.get_automation_states()
@@ -1797,7 +1797,8 @@ class AutomationEngine:
     
     def __init__(self, game: BaseGame, device_manager: DeviceManager,
                  speed_multiplier: float = 1.0, inter_macro_delay: float = 0.0,
-                 max_instances: int = 8, verbose: bool = False, use_streaming: bool = False):
+                 max_instances: int = 8, verbose: bool = False, use_streaming: bool = False,
+                 force_resume: bool = False):
         self.game = game
         self.device_manager = device_manager
         self.macro_executor = MacroExecutor(speed_multiplier, inter_macro_delay, verbose)
@@ -1806,6 +1807,7 @@ class AutomationEngine:
         self.max_instances = max_instances
         self.verbose = verbose
         self.use_streaming = use_streaming
+        self.force_resume = force_resume
         self.instances = []
         self.running = True
         self.last_status_write = 0  # Track last status write time
@@ -1880,6 +1882,109 @@ class AutomationEngine:
         except Exception as e:
             print(f"❌ Error writing status to file: {e}")
     
+    def save_state_to_file(self):
+        """Save detailed state information to resume.json for resuming automation"""
+        try:
+            state_data = {
+                "timestamp": time.time(),
+                "game_name": self.game.get_display_name(),
+                "game_counter": self.game.get_counter(),
+                "instances": []
+            }
+            
+            for instance in self.instances:
+                instance_state = {
+                    "device_id": instance.device_id,
+                    "instance_number": instance.instance_number,
+                    "current_state": instance.instance_data['current_state'],
+                    "session_count": instance.instance_data['session_count'],
+                    "cycle_count": instance.instance_data['cycle_count'],
+                    "detected_items": instance.instance_data['detected_items'],
+                    "account_id": instance.instance_data['account_id'],
+                    "current_action_index": instance.current_action_index,
+                    "current_state_start_time": instance.current_state_start_time,
+                    "running": instance.running
+                }
+                state_data["instances"].append(instance_state)
+            
+            with open("resume.json", "w", encoding="utf-8") as f:
+                json.dump(state_data, f, indent=2, ensure_ascii=False)
+                
+            if self.verbose:
+                print(f"💾 State saved to resume.json")
+                
+        except Exception as e:
+            print(f"❌ Error saving state to file: {e}")
+    
+    def load_state_from_file(self) -> Optional[Dict[str, Any]]:
+        """Load detailed state information from resume.json for resuming automation"""
+        try:
+            resume_file = Path("resume.json")
+            if not resume_file.exists():
+                if self.verbose:
+                    print("📄 No resume.json file found - starting fresh")
+                return None
+            
+            with open(resume_file, "r", encoding="utf-8") as f:
+                state_data = json.load(f)
+            
+            if self.verbose:
+                print(f"📄 Loaded state from resume.json")
+                print(f"   Game: {state_data.get('game_name', 'Unknown')}")
+                print(f"   Counter: {state_data.get('game_counter', 0)}")
+                print(f"   Instances: {len(state_data.get('instances', []))}")
+            
+            return state_data
+            
+        except Exception as e:
+            print(f"❌ Error loading state from file: {e}")
+            return None
+    
+    def can_resume(self) -> bool:
+        """Check if we can resume from a saved state"""
+        state_data = self.load_state_from_file()
+        if not state_data:
+            return False
+        
+        # Check if the game name matches
+        if state_data.get('game_name') != self.game.get_display_name():
+            if self.verbose:
+                print(f"⚠️ Game mismatch: saved '{state_data.get('game_name')}' vs current '{self.game.get_display_name()}'")
+            return False
+        
+        # Check if we have any instances to resume
+        instances = state_data.get('instances', [])
+        if not instances:
+            if self.verbose:
+                print("⚠️ No instances found in saved state")
+            return False
+        
+        return True
+    
+    def cleanup_resume_file(self):
+        """Remove the resume.json file when automation completes successfully"""
+        try:
+            resume_file = Path("resume.json")
+            if resume_file.exists():
+                resume_file.unlink()
+                if self.verbose:
+                    print("🗑️ Cleaned up resume.json file")
+        except Exception as e:
+            if self.verbose:
+                print(f"⚠️ Could not clean up resume.json: {e}")
+    
+    def check_completion_and_cleanup(self):
+        """Check if all instances have completed their sessions and cleanup if so"""
+        # Check if all instances have completed their target sessions
+        total_sessions = sum(instance.instance_data['session_count'] for instance in self.instances)
+        target_sessions = len(self.instances) * self.game.get_cycles_per_session()
+        
+        if total_sessions >= target_sessions:
+            print("🎉 All target sessions completed! Cleaning up resume file...")
+            self.cleanup_resume_file()
+            return True
+        return False
+    
     def show_status(self, start_time: float):
         """Show current status of all instances (legacy method for manual key press)"""
         elapsed_time = time.time() - start_time
@@ -1933,6 +2038,17 @@ class AutomationEngine:
         if self.verbose:
             print(f"🔧 AutomationEngine: Creating {len(device_list)} instances")
         
+        # Check if we can resume from saved state
+        saved_state = self.load_state_from_file()
+        resume_mode = False
+        
+        if saved_state and (self.can_resume() or self.force_resume):
+            if self.force_resume:
+                print("🔄 Force resume mode - attempting to restore from saved state")
+            else:
+                print("🔄 Resume mode detected - attempting to restore from saved state")
+            resume_mode = True
+        
         # Setup streaming if enabled
         if self.use_streaming and self.stream_manager:
             print("🎥 Setting up streaming for all devices...")
@@ -1954,9 +2070,54 @@ class AutomationEngine:
                 self.image_detector, self.device_manager, self.discord_notifier,
                 self.stream_manager, self.verbose
             )
+            
+            # Restore state if resuming
+            if resume_mode and saved_state:
+                saved_instances = saved_state.get('instances', [])
+                # Find matching instance by device_id or instance_number
+                saved_instance = None
+                for saved_inst in saved_instances:
+                    if (saved_inst.get('device_id') == device_id or 
+                        saved_inst.get('instance_number') == i):
+                        saved_instance = saved_inst
+                        break
+                
+                if saved_instance:
+                    # Restore instance data
+                    instance.instance_data.update({
+                        'current_state': saved_instance.get('current_state', self.game.get_initial_state()),
+                        'session_count': saved_instance.get('session_count', 0),
+                        'cycle_count': saved_instance.get('cycle_count', 0),
+                        'detected_items': saved_instance.get('detected_items', []),
+                        'account_id': saved_instance.get('account_id')
+                    })
+                    instance.current_action_index = saved_instance.get('current_action_index', 0)
+                    instance.current_state_start_time = time.time()  # Reset timer for current state
+                    instance.running = saved_instance.get('running', True)
+                    
+                    if self.verbose:
+                        print(f"   🔄 Restored Instance #{i} ({device_id}):")
+                        print(f"      State: {instance.instance_data['current_state']}")
+                        print(f"      Sessions: {instance.instance_data['session_count']}")
+                        print(f"      Cycles: {instance.instance_data['cycle_count']}")
+                        print(f"      Action index: {instance.current_action_index}")
+                else:
+                    if self.verbose:
+                        print(f"   ⚠️ No saved state found for Instance #{i} ({device_id}) - starting fresh")
+            
             self.instances.append(instance)
         
-        print(f"🚀 Created {len(self.instances)} automation instances")
+        # Restore game counter if resuming
+        if resume_mode and saved_state:
+            saved_counter = saved_state.get('game_counter', 0)
+            self.game.set_counter(saved_counter)
+            if self.verbose:
+                print(f"   🔄 Restored game counter: {saved_counter}")
+        
+        if resume_mode:
+            print(f"🔄 Resumed {len(self.instances)} automation instances from saved state")
+        else:
+            print(f"🚀 Created {len(self.instances)} automation instances")
     
     def start(self):
         """Start the automation engine"""
@@ -2002,6 +2163,22 @@ class AutomationEngine:
                     self.write_status_to_file(start_time)
                     self.last_status_write = current_time
                 
+                # Save state every 30 seconds for resume capability
+                if not hasattr(self, 'last_state_save'):
+                    self.last_state_save = current_time
+                elif current_time - self.last_state_save >= 30.0:
+                    self.save_state_to_file()
+                    self.last_state_save = current_time
+                
+                # Check for completion and cleanup
+                if not hasattr(self, 'last_completion_check'):
+                    self.last_completion_check = current_time
+                elif current_time - self.last_completion_check >= 10.0:  # Check every 10 seconds
+                    if self.check_completion_and_cleanup():
+                        if self.verbose:
+                            print("🎉 Automation completed successfully!")
+                    self.last_completion_check = current_time
+                
                 # Check for keyboard input
                 if msvcrt.kbhit():
                     key = msvcrt.getch().decode('utf-8').lower()
@@ -2025,6 +2202,10 @@ class AutomationEngine:
             self.running = False
             for instance in self.instances:
                 instance.running = False
+        
+        # Save final state before exiting
+        print("💾 Saving final state...")
+        self.save_state_to_file()
         
         # Wait for threads to finish
         print("⏳ Waiting for all instances to stop...")

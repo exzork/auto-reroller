@@ -1,0 +1,19 @@
+{
+  "timestamp": 1755096839.7079082,
+  "game_name": "Uma Musume Friend Point Spam",
+  "game_counter": 0,
+  "instances": [
+    {
+      "device_id": "emulator-5556",
+      "instance_number": 1,
+      "current_state": "waiting_for_main_menu",
+      "session_count": 0,
+      "cycle_count": 0,
+      "detected_items": [],
+      "account_id": null,
+      "current_action_index": 0,
+      "current_state_start_time": 1755096826.7034576,
+      "running": false
+    }
+  ]
+}
