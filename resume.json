@@ -1,5 +1,5 @@
 {
-  "timestamp": 1755096839.7079082,
+  "timestamp": 1755097127.0034528,
   "game_name": "Uma Musume Friend Point Spam",
   "game_counter": 0,
   "instances": [
@@ -11,8 +11,8 @@
       "cycle_count": 0,
       "detected_items": [],
       "account_id": null,
-      "current_action_index": 0,
-      "current_state_start_time": 1755096826.7034576,
+      "current_action_index": 23,
+      "current_state_start_time": 1755096984.666267,
       "running": false
     }
   ]

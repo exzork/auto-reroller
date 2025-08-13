@@ -1018,6 +1018,10 @@ class AutomationInstance:
             if self.verbose:
                 print(f"🔢 Instance #{self.instance_number}: Counter incremented to {new_counter_value}")
             
+            # Check if target counter is reached
+            # Note: self refers to AutomationInstance, so we need to access engine through a different path
+            # We'll check this in the main automation loop instead
+            
             # Apply delay after if specified
             if delay_after:
                 time.sleep(delay_after)
@@ -1264,14 +1268,14 @@ class AutomationInstance:
         self.start_background_timeout_checker()
         
         # Restart app for clean state
-        # if not self.device_manager.restart_app(
-        #     self.device_id, 
-        #     self.game.get_app_package(), 
-        #     self.game.get_app_activity()
-        # ):
-        #     print(f"❌ Instance #{self.instance_number}: Failed to restart app")
-        #     self.stop_background_timeout_checker()
-        #     return False
+        if not self.device_manager.restart_app(
+            self.device_id, 
+            self.game.get_app_package(), 
+            self.game.get_app_activity()
+        ):
+            print(f"❌ Instance #{self.instance_number}: Failed to restart app")
+            self.stop_background_timeout_checker()
+            return False
         
         # Get automation states from game
         automation_states = self.game.get_automation_states()
@@ -1798,7 +1802,7 @@ class AutomationEngine:
     def __init__(self, game: BaseGame, device_manager: DeviceManager,
                  speed_multiplier: float = 1.0, inter_macro_delay: float = 0.0,
                  max_instances: int = 8, verbose: bool = False, use_streaming: bool = False,
-                 force_resume: bool = False):
+                 force_resume: bool = False, target_counter: Optional[int] = None):
         self.game = game
         self.device_manager = device_manager
         self.macro_executor = MacroExecutor(speed_multiplier, inter_macro_delay, verbose)
@@ -1808,6 +1812,7 @@ class AutomationEngine:
         self.verbose = verbose
         self.use_streaming = use_streaming
         self.force_resume = force_resume
+        self.target_counter = target_counter
         self.instances = []
         self.running = True
         self.last_status_write = 0  # Track last status write time
@@ -1824,6 +1829,8 @@ class AutomationEngine:
             print(f"   Inter-macro delay: {inter_macro_delay}s")
             print(f"   Max instances: {max_instances}")
             print(f"   Streaming enabled: {'✅' if use_streaming else '❌'}")
+            if target_counter is not None:
+                print(f"   Target counter: {target_counter}")
     
     def write_status_to_file(self, start_time: float):
         """Write current status to status.txt file"""
@@ -1839,6 +1846,8 @@ class AutomationEngine:
             status_lines.append(f"🔄 Total sessions: {total_sessions}")
             status_lines.append(f"⚡ Speed: {sessions_per_hour:.1f} sessions/hour")
             status_lines.append(f"🔢 Counter: {self.game.get_counter()}")
+            if self.target_counter is not None:
+                status_lines.append(f"🎯 Target: {self.target_counter}")
             status_lines.append("")
             
             if self.verbose:
@@ -1889,6 +1898,7 @@ class AutomationEngine:
                 "timestamp": time.time(),
                 "game_name": self.game.get_display_name(),
                 "game_counter": self.game.get_counter(),
+                "target_counter": self.target_counter,
                 "instances": []
             }
             
@@ -1932,6 +1942,9 @@ class AutomationEngine:
                 print(f"📄 Loaded state from resume.json")
                 print(f"   Game: {state_data.get('game_name', 'Unknown')}")
                 print(f"   Counter: {state_data.get('game_counter', 0)}")
+                target_counter = state_data.get('target_counter')
+                if target_counter is not None:
+                    print(f"   Target: {target_counter}")
                 print(f"   Instances: {len(state_data.get('instances', []))}")
             
             return state_data
@@ -1997,6 +2010,8 @@ class AutomationEngine:
         print(f"🔄 Total sessions: {total_sessions}")
         print(f"⚡ Speed: {sessions_per_hour:.1f} sessions/hour")
         print(f"🔢 Counter: {self.game.get_counter()}")
+        if self.target_counter is not None:
+            print(f"🎯 Target: {self.target_counter}")
         
         if self.verbose:
             print(f"🔧 Verbose mode: Active")
@@ -2113,6 +2128,13 @@ class AutomationEngine:
             self.game.set_counter(saved_counter)
             if self.verbose:
                 print(f"   🔄 Restored game counter: {saved_counter}")
+            
+            # Restore target counter if it was saved
+            saved_target = saved_state.get('target_counter')
+            if saved_target is not None:
+                self.target_counter = saved_target
+                if self.verbose:
+                    print(f"   🎯 Restored target counter: {saved_target}")
         
         if resume_mode:
             print(f"🔄 Resumed {len(self.instances)} automation instances from saved state")
@@ -2193,6 +2215,19 @@ class AutomationEngine:
                     elif key == 's':
                         self.show_status(start_time)
                 
+                # Check if target counter is reached
+                if self.target_counter is not None:
+                    current_counter = self.game.get_counter()
+                    if current_counter >= self.target_counter:
+                        print(f"\n🎯 Target counter reached! ({current_counter}/{self.target_counter})")
+                        print("🛑 Stopping all instances...")
+                        if self.verbose:
+                            print("🛑 Target counter achieved - sending stop signal to all instances...")
+                        self.running = False
+                        for instance in self.instances:
+                            instance.running = False
+                        break
+                
                 # time.sleep(0.5)
                 
         except KeyboardInterrupt:
@@ -2238,10 +2273,6 @@ class AutomationEngine:
         # Cleanup minicap for all devices
         print("🧹 Cleaning up minicap for all devices...")
         device_list = self.device_manager.get_device_list()
-        for device_id in device_list:
-            if self.verbose:
-                print(f"   Cleaning up minicap for device: {device_id}")
-            self.device_manager.cleanup_minicap_for_device(device_id)
         
         # Cleanup streaming if enabled
         if self.use_streaming and self.stream_manager:

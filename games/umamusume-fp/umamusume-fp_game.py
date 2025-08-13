@@ -663,7 +663,6 @@ class UmamusumeFpGame(BaseGame):
                         delay_after=1.0,
                         timeout=0.1
                     ),
-                    create_counter_action()
                 ],
                 "next_states": ["start career"]
             },

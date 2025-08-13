@@ -38,6 +38,7 @@ Examples:
   python main.py umamusume --stream  # Run automation with streaming (real-time frames)
   python main.py umamusume --stream --stream-port-start 1320  # Custom port start
   python main.py umamusume --resume  # Resume from saved state (resume.json)
+  python main.py umamusume --target-counter 100  # Stop when counter reaches 100
         """
     )
     
@@ -119,9 +120,14 @@ Examples:
                        default=1313,
                        help='Starting port for minicap streaming (default: 1313)')
     
-    parser.add_argument('--resume',
+    parser.add_argument('--resume', 
                        action='store_true',
                        help='Force resume from saved state (resume.json)')
+    
+    parser.add_argument('--target-counter',
+                       type=int,
+                       metavar='N',
+                       help='Stop all automation when counter reaches this target value')
     
     return parser.parse_args()
 
@@ -267,6 +273,8 @@ def main():
             print(f"   • Web interface: {'✅' if args.web else '❌'}")
             print(f"   • Streaming mode: {'✅' if args.stream else '❌'}")
             print(f"   • Resume mode: {'✅' if args.resume else '❌'}")
+            if args.target_counter is not None:
+                print(f"   • Target counter: {args.target_counter}")
             print("")
             
             # Verbose configuration details
@@ -300,7 +308,8 @@ def main():
                 max_instances=len(available_devices),
                 verbose=args.verbose,
                 use_streaming=args.stream,
-                force_resume=args.resume
+                force_resume=args.resume,
+                target_counter=args.target_counter
             )
             
             # Update web interface with automation engine
