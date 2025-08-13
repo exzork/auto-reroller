@@ -1,18 +1,55 @@
 {
-  "timestamp": 1755097127.0034528,
+  "timestamp": 1755100615.8476644,
   "game_name": "Uma Musume Friend Point Spam",
-  "game_counter": 0,
+  "game_counter": 6,
+  "target_counter": 6,
   "instances": [
     {
       "device_id": "emulator-5556",
       "instance_number": 1,
-      "current_state": "waiting_for_main_menu",
+      "current_state": "start career",
       "session_count": 0,
       "cycle_count": 0,
       "detected_items": [],
       "account_id": null,
-      "current_action_index": 23,
-      "current_state_start_time": 1755096984.666267,
+      "current_action_index": 14,
+      "current_state_start_time": 1755100497.3051126,
+      "running": false
+    },
+    {
+      "device_id": "emulator-5558",
+      "instance_number": 2,
+      "current_state": "start career",
+      "session_count": 0,
+      "cycle_count": 0,
+      "detected_items": [],
+      "account_id": null,
+      "current_action_index": 11,
+      "current_state_start_time": 1755100536.4711092,
+      "running": false
+    },
+    {
+      "device_id": "emulator-5560",
+      "instance_number": 3,
+      "current_state": "start career",
+      "session_count": 0,
+      "cycle_count": 0,
+      "detected_items": [],
+      "account_id": null,
+      "current_action_index": 34,
+      "current_state_start_time": 1755100140.1251886,
+      "running": false
+    },
+    {
+      "device_id": "emulator-5562",
+      "instance_number": 4,
+      "current_state": "start career",
+      "session_count": 0,
+      "cycle_count": 0,
+      "detected_items": [],
+      "account_id": null,
+      "current_action_index": 21,
+      "current_state_start_time": 1755100378.9664397,
       "running": false
     }
   ]

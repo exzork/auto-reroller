@@ -416,10 +416,16 @@ class UmamusumeFpGame(BaseGame):
                                 likelihood=0.9,
                                 delay_before=2.0,
                                 delay_after=2.0,
-                                timeout=0.1,
+                                timeout=2,
                                 tap_times=2,
-                                tap_delay=1
+                                tap_delay=0.5
                             ),
+                            create_tap_action(
+                                template="skip 1x",
+                                likelihood=0.9,
+                                delay_after=1.0,
+                                timeout=0.1
+                            )
                         ],
                         condition="next",
                         timeout=60,
@@ -460,9 +466,15 @@ class UmamusumeFpGame(BaseGame):
                                 template="skip off",
                                 likelihood=0.9,
                                 delay_after=1.0,
-                                timeout=0.1,
+                                timeout=2,
                                 tap_times=2,
-                                tap_delay=1
+                                tap_delay=0.5
+                            ),
+                            create_tap_action(
+                                template="skip 1x",
+                                likelihood=0.9,
+                                delay_after=1.0,
+                                timeout=0.1
                             ),
                             create_tap_action(
                                 template="upper choice",
@@ -515,6 +527,12 @@ class UmamusumeFpGame(BaseGame):
                         timeout=10,
                         tap_times=2,
                         tap_delay=1
+                    ),
+                    create_tap_action(
+                        template="skip 1x",
+                        likelihood=0.9,
+                        delay_after=1.0,
+                        timeout=0.1
                     ),
                     create_tap_action(
                         template="race 2",
@@ -574,7 +592,13 @@ class UmamusumeFpGame(BaseGame):
                         likelihood=0.9,
                         delay_after=1.0,
                         tap_times=2,
-                        tap_delay=1
+                        tap_delay=2
+                    ),
+                    create_tap_action(
+                        template="skip 1x",
+                        likelihood=0.9,
+                        delay_after=1.0,
+                        timeout=0.1
                     ),
                     create_tap_action(
                         template="next",
@@ -600,6 +624,12 @@ class UmamusumeFpGame(BaseGame):
                                 timeout=0.1,
                                 tap_times=2,
                                 tap_delay=1
+                            ),
+                            create_tap_action(
+                                template="skip 1x",
+                                likelihood=0.9,
+                                delay_after=1.0,
+                                timeout=0.1
                             ),
                             create_tap_action(
                                 template="upper choice",
@@ -850,6 +880,12 @@ class UmamusumeFpGame(BaseGame):
                                 tap_delay=1
                             ),
                             create_tap_action(
+                                template="skip 1x",
+                                likelihood=0.9,
+                                delay_after=1.0,
+                                timeout=0.1
+                            ),
+                            create_tap_action(
                                 template="upper choice",
                                 likelihood=0.9,
                                 timeout=0.1,
@@ -964,6 +1000,12 @@ class UmamusumeFpGame(BaseGame):
                                 timeout=0.1,
                                 tap_times=2,
                                 tap_delay=1
+                            ),
+                            create_tap_action(
+                                template="skip 1x",
+                                likelihood=0.9,
+                                delay_after=1.0,
+                                timeout=0.1
                             ),
                             create_tap_action(
                                 template="upper choice",
